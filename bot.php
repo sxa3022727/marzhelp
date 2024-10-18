@@ -347,13 +347,32 @@ function getAdminInfo($adminId) {
     $stmtAdmin->close();
 
     $stmtTraffic = $vpnConn->prepare("
-        SELECT 
-            (SUM(users.used_traffic) + IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0)) / 1073741824 AS used_traffic_gb
-        FROM admins 
-        LEFT JOIN users ON users.admin_id = admins.id 
-        LEFT JOIN user_usage_logs ON user_usage_logs.user_id = users.id
+       SELECT admins.username, 
+    (
+        (
+            SELECT IFNULL(SUM(users.used_traffic), 0)
+            FROM users
+            WHERE users.admin_id = admins.id
+        )
+        +
+        (
+            SELECT IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0)
+            FROM user_usage_logs
+            WHERE user_usage_logs.user_id IN (
+                SELECT id FROM users WHERE users.admin_id = admins.id
+            )
+        )
+        +
+        (
+            SELECT IFNULL(SUM(user_deletions.used_traffic), 0) 
+            + IFNULL(SUM(user_deletions.reseted_usage), 0)
+            FROM user_deletions
+            WHERE user_deletions.admin_id = admins.id
+        )
+    ) / 1073741824 AS used_traffic_gb
+        FROM admins
         WHERE admins.id = ?
-        GROUP BY admins.username
+        GROUP BY admins.username, admins.id;
     ");
     $stmtTraffic->bind_param("i", $adminId);
     $stmtTraffic->execute();
