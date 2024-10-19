@@ -347,7 +347,7 @@ function getAdminInfo($adminId) {
     $stmtAdmin->close();
 
     $stmtTraffic = $vpnConn->prepare("
-       SELECT admins.username, 
+    SELECT admins.username, 
     (
         (
             SELECT IFNULL(SUM(users.used_traffic), 0)
@@ -370,10 +370,10 @@ function getAdminInfo($adminId) {
             WHERE user_deletions.admin_id = admins.id
         )
     ) / 1073741824 AS used_traffic_gb
-        FROM admins
-        WHERE admins.id = ?
-        GROUP BY admins.username, admins.id;
-    ");
+    FROM admins
+    WHERE admins.id = ?
+    GROUP BY admins.username, admins.id;
+            ");
     $stmtTraffic->bind_param("i", $adminId);
     $stmtTraffic->execute();
     $trafficResult = $stmtTraffic->get_result();
@@ -381,6 +381,7 @@ function getAdminInfo($adminId) {
     $stmtTraffic->close();
 
     $usedTraffic = isset($trafficData['used_traffic_gb']) ? round($trafficData['used_traffic_gb'], 2) : 0;
+    $usedTraffic = number_format($usedTraffic, 2, '.', ',');
 
     $stmtSettings = $botConn->prepare("SELECT total_traffic, expiry_date, status, user_limit FROM admin_settings WHERE admin_id = ?");
     $stmtSettings->bind_param("i", $adminId);
@@ -390,7 +391,10 @@ function getAdminInfo($adminId) {
     $stmtSettings->close();
 
     $totalTraffic = isset($settings['total_traffic']) ? round($settings['total_traffic'] / 1073741824, 2) : 'نامحدود';
-    $remainingTraffic = ($totalTraffic !== 'نامحدود') ? round($totalTraffic - $usedTraffic, 2) : 'نامحدود';
+    $totalTraffic = $totalTraffic !== 'نامحدود' ? number_format($totalTraffic, 2, '.', ',') : 'نامحدود';
+
+    $remainingTraffic = ($totalTraffic !== 'نامحدود') ? round(str_replace(',', '', $totalTraffic) - str_replace(',', '', $usedTraffic), 2) : 'نامحدود';
+    $remainingTraffic = $remainingTraffic !== 'نامحدود' ? number_format($remainingTraffic, 2, '.', ',') : 'نامحدود';
 
     $expiryDate = isset($settings['expiry_date']) ? $settings['expiry_date'] : 'نامحدود';
     $daysLeft = ($expiryDate !== 'نامحدود') ? ceil((strtotime($expiryDate) - time()) / 86400) : 'نامحدود';
