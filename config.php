@@ -11,7 +11,7 @@ $botDbName = 'marzhelp';
 
 
 $vpnDbHost = ''; 
-$vpnDbPort = 3306; 
+# $vpnDbPort = 3306; 
 $vpnDbUser = 'root';
 $vpnDbPass = '';
 $vpnDbName = 'marzban';
