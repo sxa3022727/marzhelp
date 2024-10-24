@@ -161,7 +161,9 @@ git clone https://github.com/ppouria/marzhelp.git /var/www/html/marzhelp
 sudo chown -R www-data:www-data /var/www/html/marzhelp/
 sudo chmod -R 755 /var/www/html/marzhelp/
 
-allowed_users_formatted=$(IFS=,; echo "${adminIds[*]/#/\'}" | sed "s/,/','/g")
+allowed_users_formatted=$(printf "'%s'," "${adminIds[@]}")
+allowed_users_formatted=${allowed_users_formatted%,} 
+
 
 cat <<EOL > /var/www/html/marzhelp/config.php
 <?php
