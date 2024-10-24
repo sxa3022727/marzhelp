@@ -12,6 +12,9 @@ bash <(curl -s https://raw.githubusercontent.com/ppouria/marzhelp/main/install.s
 #### Important Note
 During the installation process, **port 80** will be temporarily opened to obtain an SSL certificate for the domain using Let's Encrypt. Once the SSL certificate is obtained and configured, **port 88** will be used permanently for serving this project. This ensures that all connections are secured using SSL.
 
+### Warning
+If you already have Nginx installed, do not install the bot using this script, as the script will remove Nginx if it detects an existing installation.
+
 ## Description
 
 **Marzhelp** is a comprehensive tool for managing the administrators of [Marzban](https://github.com/Gozargah/Marzban). It streamlines administrative tasks, enabling you to set up secure configurations and efficiently manage users. This bot is installed with Nginx and occupies port 88. Marzhelp utilizes a combination of PHP, Nginx, and MySQL to establish a reliable environment for bot operations, helping you effortlessly manage your users.
