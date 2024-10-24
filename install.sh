@@ -6,13 +6,27 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 clear
 
+# Check if Nginx is installed, and remove if it is
+if dpkg -l | grep -q "^ii  nginx"; then
+    echo "Nginx is installed. Removing Nginx..."
+    sudo systemctl stop nginx
+    sudo systemctl disable nginx
+    sudo apt-get remove --purge nginx nginx-common nginx-full -y
+    sudo apt-get autoremove -y
+    echo "Nginx has been removed."
+fi
+
 sudo apt update && sudo apt upgrade -y
 sudo apt install software-properties-common -y
 sudo add-apt-repository ppa:ondrej/php -y
 sudo apt update
 apt install mysql-client-core-8.0
 sudo apt install -y nginx php php-cli php-fpm php-curl php-mbstring php-xml php-zip php-soap libssh2-1-dev libssh2-1 git wget unzip curl certbot python3-certbot-nginx
+
+sleep 15
+
 clear
+
 if ! systemctl list-units --type=service | grep -q "nginx.service"; then
     echo "Nginx service is not found. Reinstalling Nginx..."
     sudo apt remove --purge nginx nginx-common -y
@@ -30,7 +44,8 @@ sudo systemctl stop apache2
 sudo systemctl disable apache2
 sudo apt-get remove --purge apache2 apache2-utils apache2-bin apache2.2-common -y
 sudo apt-get autoremove -y
-
+sleep 10
+clear
 read -p "Enter the domain for your server (e.g., example.com): " botDomain
 read -p "Enter your server's public IP address: " serverIP
 
@@ -52,7 +67,7 @@ echo "Configuring Nginx to run on port 88 with SSL..."
 
 sudo sed -i 's/listen 80 default_server;/listen 88 ssl default_server;/' /etc/nginx/sites-available/default
 sudo sed -i 's/listen \[::\]:80 default_server;/listen \[::\]:88 ssl default_server;/' /etc/nginx/sites-available/default
-
+sleep 10
 
 php_version=$(php -v | grep -oP 'PHP \K[0-9]+\.[0-9]+' | head -1)
 
@@ -94,6 +109,7 @@ else
     echo "Nginx failed to start. Please check configuration or logs."
     exit 1
 fi
+sleep 10
 
 clear
 
@@ -163,7 +179,6 @@ sudo chmod -R 755 /var/www/html/marzhelp/
 
 allowed_users_formatted=$(printf "'%s'," "${adminIds[@]}")
 allowed_users_formatted=${allowed_users_formatted%,} 
-
 
 cat <<EOL > /var/www/html/marzhelp/config.php
 <?php
