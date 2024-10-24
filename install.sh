@@ -103,7 +103,7 @@ read -p "Enter the bot database name (default: marzhelp): " botDbName
 botDbName=${botDbName:-marzhelp}
 read -p "Enter the VPN database name (default: marzban): " vpnDbName
 vpnDbName=${vpnDbName:-marzban}
-read -p "Enter the MySQL root password for Docker: " dbRootPass
+read -p "Enter the MySQL root password for Docker: " -r dbRootPass
 
 mysql -h 127.0.0.1 -u root -p"$dbRootPass" -e "CREATE DATABASE IF NOT EXISTS $botDbName;"
 mysql -h 127.0.0.1 -u root -p"$dbRootPass" $botDbName <<EOF
