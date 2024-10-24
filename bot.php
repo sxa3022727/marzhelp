@@ -3030,6 +3030,7 @@ function handleCallbackQuery($callback_query) {
                     }
                     $stateset = 'waiting_for_username';
                     setUserState($userId, $stateset, $messageId);
+            
                     return;
                 }
                 $stmt->close();
