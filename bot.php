@@ -1,11 +1,11 @@
 <?php
 
-/*
 if (php_sapi_name() !== 'cli') {
-    header("Location: https://roverloom.com/");
-    exit;
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        header("Location: https://roverloom.com/");
+        exit;
+    }
 }
-*/
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -19,9 +19,9 @@ if ($botConn->connect_error) {
     exit;
 }
 $botConn->set_charset("utf8");
-/* If you install the robot on an external host or server
- $vpnConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName, $vpnDbPort);
-*/
+// If you install the robot on an external host or server
+// $vpnConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName, $vpnDbPort);
+
 $vpnConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName);
 if ($vpnConn->connect_error) {
     file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - VPN DB connection failed: " . $vpnConn->connect_error . "\n", FILE_APPEND);
@@ -109,6 +109,7 @@ function getAdminKeyboard($userId, $adminId, $status) {
         return getLimitedAdminManagementKeyboard($adminId, $status); 
     }
 }
+
 
 
 function getAdminManagementKeyboard($adminId, $status) {
@@ -320,7 +321,6 @@ function getRestrictionsKeyboard($adminId, $preventUserDeletion, $preventUserCre
         ]
     ];
 }
-
 function getUserRole($telegramId) {
     global $allowedUsers, $vpnConn;
     
@@ -341,7 +341,6 @@ function getUserRole($telegramId) {
     
     return 'unauthorized';
 }
-
 function getAdminInfo($adminId) {
     global $vpnConn, $botConn;
 
@@ -548,7 +547,6 @@ function getAdminInfo($adminId) {
         'userStats' => $userStats
     ];
 }
-
 function generateRandomPassword($length = 12) {
     $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+[]{}|;:,.<>?';
     $password = '';
@@ -557,8 +555,6 @@ function generateRandomPassword($length = 12) {
     }
     return $password;
 }
-
-
 function createAdmin($userId, $chatId) {
     global $vpnConn, $botConn;
 
@@ -625,8 +621,6 @@ function createAdmin($userId, $chatId) {
     clearUserState($userId);
     clearTemporaryData($userId);
 }
-
-
 function setUserState($userId, $state, $messageId = null, $adminId = null) {
     global $botConn;
 
@@ -672,11 +666,6 @@ function setUserState($userId, $state, $messageId = null, $adminId = null) {
     $stmt->close();
     return true;
 }
-
-
-
-
-
 function getUserState($userId) {
     global $botConn;
     $stmt = $botConn->prepare("SELECT state FROM user_states WHERE user_id = ?");
@@ -690,7 +679,6 @@ function getUserState($userId) {
     $stmt->close();
     return $state;
 }
-
 function setTemporaryData($userId, $key, $value) {
     global $botConn;
     $stmt = $botConn->prepare("INSERT INTO user_temporaries (user_id, `key`, `value`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = ?");
@@ -698,7 +686,6 @@ function setTemporaryData($userId, $key, $value) {
     $stmt->execute();
     $stmt->close();
 }
-
 function getTemporaryData($userId, $key) {
     global $botConn;
     $stmt = $botConn->prepare("SELECT `value` FROM user_temporaries WHERE user_id = ? AND `key` = ?");
@@ -712,7 +699,6 @@ function getTemporaryData($userId, $key) {
     $stmt->close();
     return $value;
 }
-
 function clearUserState($userId) {
     global $botConn;
     $stmt = $botConn->prepare("UPDATE user_states SET state = NULL WHERE user_id = ?");
@@ -720,7 +706,6 @@ function clearUserState($userId) {
     $stmt->execute();
     $stmt->close();
 }
-
 function clearTemporaryData($userId) {
     global $botConn;
     $stmt = $botConn->prepare("DELETE FROM user_temporaries WHERE user_id = ?");
@@ -728,8 +713,6 @@ function clearTemporaryData($userId) {
     $stmt->execute();
     $stmt->close();
 }
-
-
 function getAdminInfoText($adminInfo) {
     $statusText = ($adminInfo['status'] === 'active') ? '🟢 وضعیت : فعال' : '🔴 وضعیت : غیرفعال';
     $trafficText = ($adminInfo['totalTraffic'] !== 'نامحدود') ? "{$adminInfo['totalTraffic']} گیگابایت" : 'نامحدود';
@@ -750,7 +733,6 @@ function getAdminInfoText($adminInfo) {
 
     return $infoText . $userStatsText;
 }
-
 $content = file_get_contents("php://input");
 file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Received content: " . $content . "\n", FILE_APPEND);
 $update = json_decode($content, true);
@@ -758,7 +740,6 @@ if (!$update) {
     file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - JSON decode failed\n", FILE_APPEND);
     exit;
 }
-
 if (isset($update['callback_query'])) {
     handleCallbackQuery($update['callback_query']);
 } elseif (isset($update['message'])) {
@@ -837,8 +818,6 @@ function handleCallbackQuery($callback_query) {
             'reply_markup' => getprotocolsttingskeyboard($adminId)
         ]);
     }
-
-
     if (strpos($data, 'show_restrictions:') === 0) {
         $adminId = intval(substr($data, strlen('show_restrictions:')));
     
@@ -858,7 +837,6 @@ function handleCallbackQuery($callback_query) {
             'reply_markup' => getRestrictionsKeyboard($adminId, $adminInfo['preventUserDeletion'], $adminInfo['preventUserCreation'], $adminInfo['preventUserReset'], $adminInfo['preventRevokeSubscription'], $adminInfo['preventUnlimitedTraffic'])
         ]);
     }
-    
     if (strpos($data, 'toggle_prevent_revoke_subscription:') === 0) {
         $adminId = intval(substr($data, strlen('toggle_prevent_revoke_subscription:')));
     
@@ -936,7 +914,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-    
     if (strpos($data, 'reduce_time:') === 0) {
         $adminId = intval(substr($data, strlen('reduce_time:')));
         
@@ -983,7 +960,6 @@ function handleCallbackQuery($callback_query) {
     
         return;
     }
-    
     if (strpos($data, 'toggle_prevent_user_creation:') === 0) {
         $adminId = intval(substr($data, strlen('toggle_prevent_user_creation:')));
     
@@ -1046,7 +1022,6 @@ function handleCallbackQuery($callback_query) {
             'reply_markup' => getRestrictionsKeyboard($adminId, $adminInfo['preventUserDeletion'], $adminInfo['preventUserCreation'], $adminInfo['preventUserReset'], $adminInfo['preventRevokeSubscription'], $adminInfo['preventUnlimitedTraffic'])
         ]);
     }
-    
     if (strpos($data, 'toggle_prevent_unlimited_traffic:') === 0) {
         $adminId = intval(substr($data, strlen('toggle_prevent_unlimited_traffic:')));
     
@@ -1066,13 +1041,11 @@ function handleCallbackQuery($callback_query) {
                 }
             }
         }
-    
         if (in_array($adminId, $adminIds)) {
             $adminIds = array_diff($adminIds, [$adminId]);
         } else {
             $adminIds[] = $adminId;
         }
-    
         if (empty($adminIds)) {
             $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
         } else {
@@ -1093,7 +1066,6 @@ function handleCallbackQuery($callback_query) {
             $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
             $vpnConn->query($triggerBody);
         }
-    
         $adminInfo = getAdminInfo($adminId);
         if (!$adminInfo) {
             sendRequest('sendMessage', [
@@ -1110,8 +1082,6 @@ function handleCallbackQuery($callback_query) {
             'reply_markup' => getRestrictionsKeyboard($adminId, $adminInfo['preventUserDeletion'], $adminInfo['preventUserCreation'], $adminInfo['preventUserReset'], $adminInfo['preventRevokeSubscription'], $adminInfo['preventUnlimitedTraffic'])
         ]);
     }
-    
-    
     if ($data === 'manage_admins') {
         $adminsResult = $vpnConn->query("SELECT id, username FROM admins");
         $admins = [];
@@ -1120,10 +1090,20 @@ function handleCallbackQuery($callback_query) {
         }
     
         if (empty($admins)) {
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => '➕ افزودن ادمین', 'callback_data' => 'add_admin'],
+                        ['text' => $backButton, 'callback_data' => 'back_to_main']
+                    ]
+                ]
+            ];
+    
             sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
-                'text' => '🛠️ هیچ ادمینی اضافه نشده است.'
+                'text' => '🛠️ هیچ ادمینی اضافه نشده است.',
+                'reply_markup' => $keyboard
             ]);
             return;
         }
@@ -1142,9 +1122,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-
-    
-
     if (strpos($data, 'toggle_prevent_user_deletion:') === 0) {
         $adminId = intval(substr($data, strlen('toggle_prevent_user_deletion:')));
     
@@ -1248,7 +1225,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-
     if (strpos($data, 'disable_inbound_select:') === 0) {
         list(, $adminId, $inboundTag) = explode(':', $data, 3);
     
@@ -1311,7 +1287,6 @@ function handleCallbackQuery($callback_query) {
     
         return;
     }
-    
     if (strpos($data, 'enable_inbound_select:') === 0) {
         list(, $adminId, $inboundTag) = explode(':', $data, 3);
     
@@ -1346,7 +1321,6 @@ function handleCallbackQuery($callback_query) {
             )
             AND inbound_tag = '$inboundTagEscaped';
         ";
-    
         if ($vpnConn->query($sql) === TRUE) {
             sendRequest('answerCallbackQuery', [
                 'callback_query_id' => $callbackId,
@@ -1371,11 +1345,8 @@ function handleCallbackQuery($callback_query) {
             'text' => $infoText,
             'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status'])
         ]);
-    
         return;
     }
-    
-
     if (strpos($data, 'enable_inbounds:') === 0) {
         $adminId = intval(substr($data, strlen('enable_inbounds:')));
     
@@ -1406,7 +1377,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-    
     if (strpos($data, 'toggle_disable_inbound:') === 0) {
         $inboundTag = substr($data, strlen('toggle_disable_inbound:'));
     
@@ -1568,7 +1538,6 @@ function handleCallbackQuery($callback_query) {
             return;
         }
     }
-    
     if (strpos($data, 'confirm_inbounds:') === 0) {
         $adminId = intval(substr($data, strlen('confirm_inbounds:')));
         $adminInfo = getAdminInfo($adminId);
@@ -1596,25 +1565,37 @@ function handleCallbackQuery($callback_query) {
         while ($row = $adminsResult->fetch_assoc()) {
             $admins[] = ['text' => $row['username'], 'callback_data' => 'select_admin:' . $row['id']];
         }
-    
         if (empty($admins)) {
             $stmt = $botConn->prepare("UPDATE user_states SET state = NULL WHERE user_id = ?");
             $stmt->bind_param("i", $chatId);
             $stmt->execute();
             $stmt->close();
     
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => '➕ افزودن ادمین', 'callback_data' => 'add_admin'],
+                        ['text' => $backButton, 'callback_data' => 'back_to_main']
+                    ]
+                ]
+            ];
+    
             sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
-                'text' => '🛠️ هیچ ادمینی اضافه نشده است.'
+                'text' => '🛠️ هیچ ادمینی اضافه نشده است.',
+                'reply_markup' => $keyboard
             ]);
     
             return;
         }
     
         $keyboard = ['inline_keyboard' => array_chunk($admins, 2)];
-        $keyboard['inline_keyboard'][] = [['text' => $backButton, 'callback_data' => 'back_to_main']];
-        
+        $keyboard['inline_keyboard'][] = [
+            ['text' => '➕ افزودن ادمین', 'callback_data' => 'add_admin'],
+            ['text' => $backButton, 'callback_data' => 'back_to_main']
+        ];
+    
         $stmt = $botConn->prepare("UPDATE user_states SET state = NULL WHERE user_id = ?");
         $stmt->bind_param("i", $chatId);
         $stmt->execute();
@@ -1628,8 +1609,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-    
-
     if (strpos($data, 'select_admin:') === 0) {
         $adminId = intval(substr($data, strlen('select_admin:')));
 
@@ -1843,7 +1822,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-
    if (strpos($data, 'set_traffic:') === 0) {
         $adminId = intval(substr($data, strlen('set_traffic:')));
         $stmt = $botConn->prepare("INSERT INTO user_states (user_id, state, admin_id, message_id) VALUES (?, 'set_traffic', ?, ?) ON DUPLICATE KEY UPDATE state = 'set_traffic', admin_id = ?, message_id = ?");
@@ -1859,7 +1837,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-
     if (strpos($data, 'set_expiry:') === 0) {
         $adminId = intval(substr($data, strlen('set_expiry:')));
         
@@ -1883,7 +1860,6 @@ function handleCallbackQuery($callback_query) {
     
         return;
     }
-
     if (strpos($data, 'disable_users:') === 0) {
         $adminId = intval(substr($data, strlen('disable_users:')));
 
@@ -1895,7 +1871,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-
     if (strpos($data, 'confirm_disable_yes:') === 0) {
         $adminId = intval(substr($data, strlen('confirm_disable_yes:')));
 
@@ -1931,7 +1906,6 @@ function handleCallbackQuery($callback_query) {
 
         return;
     }
-
     if (strpos($data, 'enable_users:') === 0) {
         $adminId = intval(substr($data, strlen('enable_users:')));
 
@@ -1967,8 +1941,6 @@ function handleCallbackQuery($callback_query) {
 
         return;
     }
-
-    
     if (strpos($data, 'limit_inbounds:') === 0) {
         $adminId = intval(substr($data, strlen('limit_inbounds:')));
         $adminInfo = getAdminInfo($adminId);
@@ -2031,7 +2003,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-    
     if (strpos($data, 'toggle_inbound:') === 0) {
         list(, $adminId, $inboundTag) = explode(':', $data);
     
@@ -2132,7 +2103,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-     
     if (strpos($data, 'add_protocol:') === 0) {
         $adminId = intval(substr($data, strlen('add_protocol:')));
         sendRequest('editMessageText', [
@@ -2143,7 +2113,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-
     if (strpos($data, 'remove_protocol:') === 0) {
         $adminId = intval(substr($data, strlen('remove_protocol:')));
         sendRequest('editMessageText', [
@@ -2154,7 +2123,6 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-
     if (strpos($data, 'select_add_protocol:') === 0) {
         list(, $protocol, $adminId) = explode(':', $data);
     
@@ -2222,7 +2190,6 @@ function handleCallbackQuery($callback_query) {
     
         return;
     }
-    
     if (strpos($data, 'select_remove_protocol:') === 0) {
         list(, $protocol, $adminId) = explode(':', $data);
     
@@ -2287,7 +2254,6 @@ function handleCallbackQuery($callback_query) {
     
         return;
     }
-    
     if (strpos($data, 'add_data_limit:') === 0) {
         $adminId = intval(substr($data, strlen('add_data_limit:')));
     
@@ -2308,7 +2274,6 @@ function handleCallbackQuery($callback_query) {
         $stmt->close();
         return;
     }
-    
     if (strpos($data, 'subtract_data_limit:') === 0) {
         $adminId = intval(substr($data, strlen('subtract_data_limit:')));
         
@@ -2464,8 +2429,6 @@ function handleCallbackQuery($callback_query) {
         return;
     }
     if ($data === 'add_admin') {
-            
-
         sendRequest('editMessageText', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
@@ -2517,11 +2480,8 @@ function handleCallbackQuery($callback_query) {
         setUserState($userId, $stateset, $messageId);
         return;
     }
-    
     if ($data === 'sudo_yes') {
         setTemporaryData($userId, 'new_admin_sudo', 1);
-        
-
         
         sendRequest('editMessageText', [
             'chat_id' => $chatId,
@@ -2547,10 +2507,8 @@ function handleCallbackQuery($callback_query) {
         setUserState($userId, $stateset, $messageId);
         return;
     }
-    
     if ($data === 'sudo_no') {
         setTemporaryData($userId, 'new_admin_sudo', 0);
-        
         
         sendRequest('editMessageText', [
             'chat_id' => $chatId,
@@ -2581,12 +2539,8 @@ function handleCallbackQuery($callback_query) {
         
         createAdmin($userId, $chatId);
         return;
+         }
     }
-    
-    
-    }
-
-
 
     function handleMessage($message) {
         global $botConn, $vpnConn, $mainMenuButton, $backButton;
@@ -2655,7 +2609,6 @@ function handleCallbackQuery($callback_query) {
                     return;
                 }
             }
-
             if ($userState['state'] === 'subtract_data_limit') {
                 $dataLimit = floatval($text); 
                 if ($dataLimit > 0) {
@@ -2692,8 +2645,7 @@ function handleCallbackQuery($callback_query) {
                     $stmt->bind_param("i", $userId);
                     $stmt->execute();
                     $stmt->close();
-    }
-                    return;
+          }return;
                 } else {
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
@@ -2800,7 +2752,6 @@ function handleCallbackQuery($callback_query) {
                     return;
                 }
             }
-    
             if ($userState['state'] === 'reduce_time') {
                 $days = intval($text);
                 if ($days > 0) {
@@ -2855,7 +2806,6 @@ function handleCallbackQuery($callback_query) {
                     return;
                 }
             }
-    
             if ($userState['state'] === 'set_traffic') {
                 $traffic = floatval($text);
                 if ($traffic > 0) {
@@ -2902,8 +2852,6 @@ function handleCallbackQuery($callback_query) {
                     return;
                 }
             }
-            
-    
             if ($userState['state'] === 'set_expiry') {
                 $days = intval($text);
                 if ($days > 0) {
@@ -3203,11 +3151,9 @@ function handleCallbackQuery($callback_query) {
                 return;
             }
         }
-        
         if ($userState['state'] === 'waiting_for_sudo') {
             return;
         }
-        
         if ($userState['state'] === 'waiting_for_telegram_id') {
             $adminId = $userState['admin_id'];
             if (is_numeric($text)) {
@@ -3231,10 +3177,6 @@ function handleCallbackQuery($callback_query) {
                 return;
             }
         }
-    
-    
-        
-
         if ($text === '/start') {
             if ($userRole === 'main_admin') {
                 sendRequest('sendMessage', [
