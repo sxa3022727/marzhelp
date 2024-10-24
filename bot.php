@@ -1,8 +1,11 @@
 <?php
+
+/*
 if (php_sapi_name() !== 'cli') {
     header("Location: https://roverloom.com/");
     exit;
 }
+*/
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -16,9 +19,9 @@ if ($botConn->connect_error) {
     exit;
 }
 $botConn->set_charset("utf8");
-// If you install the robot on an external host or server
-// $vpnConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName, $vpnDbPort);
-
+/* If you install the robot on an external host or server
+ $vpnConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName, $vpnDbPort);
+*/
 $vpnConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName);
 if ($vpnConn->connect_error) {
     file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - VPN DB connection failed: " . $vpnConn->connect_error . "\n", FILE_APPEND);
