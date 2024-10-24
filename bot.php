@@ -1,4 +1,9 @@
 <?php
+if (php_sapi_name() !== 'cli') {
+    header("Location: https://roverloom.com/");
+    exit;
+}
+
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
