@@ -94,7 +94,9 @@ else
     echo "Nginx failed to start. Please check configuration or logs."
     exit 1
 fi
+
 clear
+
 read -p "Enter the bot token: " botToken
 read -p "Enter the allowed admin IDs (comma separated): " adminIds
 read -p "Enter the bot database name (default: marzhelp): " botDbName
