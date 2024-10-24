@@ -1,6 +1,9 @@
 # marzhelp
 A database management bot for Marzban
 
+## Telegram
+Join us on [Telegram](https://t.me/marzhelp) for support and updates.
+
 ## Installation
 
 To install **Marzhelp**, use the following command:
