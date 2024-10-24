@@ -15,7 +15,7 @@ if dpkg -l | grep -q "^ii  nginx"; then
     sudo apt-get autoremove -y
     sudo rm -rf /etc/nginx
     sudo rm -rf /var/log/nginx
-    sudo rm -rf /var/www/html/marzhelp/*
+    sudo rm -rf /var/www/html/marzhelp/
     echo "Nginx has been removed."
 fi
 
@@ -190,8 +190,11 @@ fi
 sudo chown -R www-data:www-data /var/www/html/marzhelp/
 sudo chmod -R 755 /var/www/html/marzhelp/
 
-allowed_users_formatted=$(printf "'%s'," "${adminIds[@]}")
-allowed_users_formatted=${allowed_users_formatted%,} 
+allowed_users_formatted=$(IFS=', '; echo "${adminIds[*]}")
+
+if [[ $dbRootPass == *\\ ]]; then
+    dbRootPass="${dbRootPass}\\"
+fi
 
 cat <<EOL > /var/www/html/marzhelp/config.php
 <?php
@@ -211,6 +214,7 @@ cat <<EOL > /var/www/html/marzhelp/config.php
 \$vpnDbName = '$vpnDbName';
 ?>
 EOL
+
 
 curl "https://api.telegram.org/bot$botToken/setWebhook?url=https://$botDomain:88/marzhelp/bot.php&ip_address=$serverIP&max_connections=40"
 
