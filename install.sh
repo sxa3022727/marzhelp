@@ -176,7 +176,17 @@ CREATE TABLE IF NOT EXISTS user_deletions (
 );
 EOF
 
-git clone https://github.com/ppouria/marzhelp.git /var/www/html/marzhelp
+
+if [ -d "/var/www/html/marzhelp" ]; then
+    echo "Marzhelp directory already exists. Pulling latest changes from GitHub..."
+    cd /var/www/html/marzhelp
+    git reset --hard HEAD 
+    git pull origin main  
+else
+    echo "Cloning Marzhelp repository from GitHub..."
+    git clone https://github.com/ppouria/marzhelp.git /var/www/html/marzhelp
+fi
+
 sudo chown -R www-data:www-data /var/www/html/marzhelp/
 sudo chmod -R 755 /var/www/html/marzhelp/
 
