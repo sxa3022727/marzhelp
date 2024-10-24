@@ -168,7 +168,7 @@ cat <<EOL > /var/www/html/marzhelp/config.php
 \$botToken = '$botToken';
 \$apiURL = "https://api.telegram.org/bot\$botToken/";
 
-\$allowedUsers = ['$allowed_users_formatted'];
+\$allowedUsers = [$allowed_users_formatted];
 
 \$botDbHost = '127.0.0.1';
 \$botDbUser = 'root';
