@@ -119,7 +119,7 @@ function getAdminManagementKeyboard($adminId, $status) {
     return [
         'inline_keyboard' => [
             [
-                ['text' => '⬇️ تنظیمات مربوط به مشخصات ادمین ⬇️', 'callback_data' => 'show_display_only']
+                ['text' => '⬇️ تنظیمات مربوط به مشخصات ادمین ⬇️', 'callback_data' => 'show_display_only_admin']
             ],
             [
                 ['text' => $setTrafficButton, 'callback_data' => 'set_traffic:' . $adminId],
@@ -130,7 +130,7 @@ function getAdminManagementKeyboard($adminId, $status) {
                 ['text' => $securityButton, 'callback_data' => 'security:' . $adminId]
             ],
             [
-                ['text' => '⬇️ تنظیمات مربوط به محدودیت‌های ادمین ⬇️', 'callback_data' => 'show_display_only']
+                ['text' => '⬇️ تنظیمات مربوط به محدودیت‌های ادمین ⬇️', 'callback_data' => 'show_display_only_limit']
             ],
             [
                 ['text' => $limitInboundsButton, 'callback_data' => 'limit_inbounds:' . $adminId],
@@ -141,7 +141,7 @@ function getAdminManagementKeyboard($adminId, $status) {
                 ['text' => $protocolsettingsbutton, 'callback_data' => 'protocol_settings:' . $adminId]
             ],
             [
-                ['text' => '⬇️ تنظیمات مربوط به کاربران ⬇️', 'callback_data' => 'show_display_only']
+                ['text' => '⬇️ تنظیمات مربوط به کاربران ⬇️', 'callback_data' => 'show_display_only_users']
             ],
             [
                 ['text' => $addTimeButton, 'callback_data' => 'add_time:' . $adminId],
@@ -787,10 +787,28 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-    if ($data === 'show_display_only') {
+    if ($data === 'show_display_only_admin') {
         sendRequest('answerCallbackQuery', [
             'callback_query_id' => $callbackId,
-            'text' => 'این دکمه صرفا نمایشی می‌باشد.',
+            'text' => 'این بخش مربوط به تنظیمات ادمین میباشد.',
+            'show_alert' => true 
+        ]);
+        
+        return;
+    }
+    if ($data === 'show_display_only_users') {
+        sendRequest('answerCallbackQuery', [
+            'callback_query_id' => $callbackId,
+            'text' => 'این بخش مربوط به کاربران شما میباشد ، بطور مثال اگر افزودن حجم را بزنید و 2 گیگ اضافه کنید ، به تمام کاربران فعال و غیرفعال شما 2 گیگ حجم افزوده میشود.',
+            'show_alert' => true 
+        ]);
+        
+        return;
+    }
+    if ($data === 'show_display_only_limit') {
+        sendRequest('answerCallbackQuery', [
+            'callback_query_id' => $callbackId,
+            'text' => 'این بخش مربوط به محدودیت هایی که میتوانید برای ادمین اعمال کنید میباشد.',
             'show_alert' => true 
         ]);
         
