@@ -681,14 +681,14 @@ function getUserState($userId) {
 }
 function setTemporaryData($userId, $key, $value) {
     global $botConn;
-    $stmt = $botConn->prepare("INSERT INTO user_temporaries (user_id, `key`, `value`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = ?");
+    $stmt = $botConn->prepare("INSERT INTO user_temporaries (user_id, `user_key`, `value`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = ?");
     $stmt->bind_param("isss", $userId, $key, $value, $value);
     $stmt->execute();
     $stmt->close();
 }
 function getTemporaryData($userId, $key) {
     global $botConn;
-    $stmt = $botConn->prepare("SELECT `value` FROM user_temporaries WHERE user_id = ? AND `key` = ?");
+    $stmt = $botConn->prepare("SELECT `value` FROM user_temporaries WHERE user_id = ? AND `user_key` = ?");
     $stmt->bind_param("is", $userId, $key);
     $stmt->execute();
     $result = $stmt->get_result();
