@@ -11,6 +11,7 @@ $botDbName = 'marzhelp';
 
 
 $vpnDbHost = ''; 
+// If you install the robot on an external host or server
 # $vpnDbPort = 3306; 
 $vpnDbUser = 'root';
 $vpnDbPass = '';
