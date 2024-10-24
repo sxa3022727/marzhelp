@@ -13,6 +13,9 @@ if dpkg -l | grep -q "^ii  nginx"; then
     sudo systemctl disable nginx
     sudo apt-get remove --purge nginx nginx-common nginx-full -y
     sudo apt-get autoremove -y
+    sudo rm -rf /etc/nginx
+    sudo rm -rf /var/log/nginx
+    sudo rm -rf /var/www/html/marzhelp/*
     echo "Nginx has been removed."
 fi
 
