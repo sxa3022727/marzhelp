@@ -36,8 +36,11 @@ If you already have Nginx installed, do not install the bot using this script, a
 
 Here is a screenshot of Marzhelp in action:
 
-<img src="https://github.com/ppouria/marzhelp/blob/main/Screenshot.png" alt="Screenshot" width="400"/>
-
+<p align="center">
+  <img src="https://github.com/ppouria/marzhelp/blob/main/Screenshot.png" alt="Screenshot" width="300"/>
+  <img src="https://github.com/ppouria/marzhelp/blob/main/screenshot2.jpg" alt="Screenshot" width="300"/>
+  <img src="https://github.com/ppouria/marzhelp/blob/main/screenshot3.png" alt="Screenshot" width="300"/>
+</p>
 
 ## Donations
 If you like Marzhelp and would like to support further development, consider making a donation:
