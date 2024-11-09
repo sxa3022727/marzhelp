@@ -39,7 +39,7 @@ if dpkg -l | grep -q "^ii  nginx"; then
         read -p "Enter the domain for your server (e.g., example.com): " botDomain
         read -p "Enter your server's public IP address: " serverIP
 
-        curl "https://api.telegram.org/bot$botToken/setWebhook?url=https://$botDomain:$port/marzhelp/bot.php&ip_address=$serverIP&max_connections=40"
+        curl "https://api.telegram.org/bot$botToken/setWebhook?url=https://$botDomain:$port/marzhelp/webhook.php&ip_address=$serverIP&max_connections=40"
 
         echo "Webhook set to https://$botDomain:$port/marzhelp/bot.php"
         echo "Your Marzhelp project has been updated successfully."
@@ -225,7 +225,7 @@ else
 fi
 
 
-curl "https://api.telegram.org/bot$botToken/setWebhook?url=https://$botDomain:88/marzhelp/bot.php&ip_address=$serverIP&max_connections=40"
+curl "https://api.telegram.org/bot$botToken/setWebhook?url=https://$botDomain:88/marzhelp/webhook.php&ip_address=$serverIP&max_connections=40"
 
 sudo systemctl restart nginx
 clear
