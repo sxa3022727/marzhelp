@@ -4,51 +4,98 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "Please run as root"
     exit
 fi
+
 clear
 
-# Check if Nginx is installed, and remove if it is
 if dpkg -l | grep -q "^ii  nginx"; then
-    echo "Nginx is installed. Removing Nginx..."
-    sudo systemctl stop nginx
-    sudo systemctl disable nginx
-    sudo apt-get remove --purge nginx nginx-common nginx-full -y
-    sudo apt-get autoremove -y
-    sudo rm -rf /etc/nginx
-    sudo rm -rf /var/log/nginx
-    sudo rm -rf /var/www/html/marzhelp/
-    echo "Nginx has been removed."
+    echo "Nginx is already installed. Retrieving current configuration..."
+
+    nginx_conf_file=$(nginx -t 2>&1 | grep -oP '/etc/nginx/[^:]+')
+    if [ -f "$nginx_conf_file" ]; then
+        root_dir=$(grep -oP 'root\s+\K[^;]+' "$nginx_conf_file" | head -1)
+        port=$(grep -oP 'listen\s+\K[0-9]+' "$nginx_conf_file" | head -1)
+
+        if [ -z "$root_dir" ]; then
+            echo "Failed to retrieve the root directory from Nginx configuration."
+            exit 1
+        fi
+
+        echo "Root directory for Nginx: $root_dir"
+        echo "Port for Nginx: $port"
+
+        if [ -d "$root_dir/marzhelp" ]; then
+            echo "Marzhelp directory already exists in $root_dir. Pulling latest changes..."
+            cd "$root_dir/marzhelp"
+            git reset --hard HEAD
+            git pull origin main
+        else
+            echo "Cloning Marzhelp repository in $root_dir..."
+            git clone https://github.com/ppouria/marzhelp.git "$root_dir/marzhelp"
+        fi
+
+        sudo chown -R www-data:www-data "$root_dir/marzhelp/"
+        sudo chmod -R 755 "$root_dir/marzhelp/"
+
+        read -p "Enter the domain for your server (e.g., example.com): " botDomain
+        read -p "Enter your server's public IP address: " serverIP
+
+        curl "https://api.telegram.org/bot$botToken/setWebhook?url=https://$botDomain:$port/marzhelp/bot.php&ip_address=$serverIP&max_connections=40"
+
+        echo "Webhook set to https://$botDomain:$port/marzhelp/bot.php"
+        echo "Your Marzhelp project has been updated successfully."
+        exit 0
+    else
+        echo "Could not find the Nginx configuration file."
+        exit 1
+    fi
+else
+    echo "Nginx is not installed. Proceeding with installation..."
+
+    sudo apt update && sudo apt upgrade -y
+    sudo apt install software-properties-common -y
+    sudo add-apt-repository ppa:ondrej/php -y
+    sudo apt update
+    apt install mysql-client-core-8.0
+    sudo apt install -y nginx php php-cli php-fpm php-curl php-mbstring php-xml php-zip php-soap libssh2-1-dev libssh2-1 git wget unzip curl certbot python3-certbot-nginx
+
+    sleep 15
+
+    sudo systemctl enable nginx
+    sudo systemctl start nginx
+
+    sudo apt-get install -y ufw
+    sudo ufw allow 80
+
+# Stop & disable Apache if installed
+if systemctl is-active --quiet apache2; then
+    echo "Apache is currently running. Stopping Apache..."
+    sudo systemctl stop apache2
+    sudo systemctl disable apache2
+
+    if lsof -i :80 | grep -q 'apache2'; then
+        echo "Apache was using port 80. Killing processes to free the port..."
+        sudo kill -9 $(lsof -t -i :80)
+        echo "Port 80 has been freed."
+    else
+        echo "Port 80 was not in use by Apache or already free."
+    fi
+else
+    echo "Apache is not running or installed."
 fi
 
-sudo apt update && sudo apt upgrade -y
-sudo apt install software-properties-common -y
-sudo add-apt-repository ppa:ondrej/php -y
-sudo apt update
-apt install mysql-client-core-8.0
-sudo apt install -y nginx php php-cli php-fpm php-curl php-mbstring php-xml php-zip php-soap libssh2-1-dev libssh2-1 git wget unzip curl certbot python3-certbot-nginx
-
-sleep 15
-
-clear
-
-if ! systemctl list-units --type=service | grep -q "nginx.service"; then
-    echo "Nginx service is not found. Reinstalling Nginx..."
-    sudo apt remove --purge nginx nginx-common -y
-    sudo apt install nginx -y
-fi
-
-sudo systemctl enable nginx
-sudo systemctl start nginx
-
-sudo apt-get install -y ufw
-sudo ufw allow 80
-
-# Remove Apache if installed
-sudo systemctl stop apache2
-sudo systemctl disable apache2
-sudo apt-get remove --purge apache2 apache2-utils apache2-bin apache2.2-common -y
-sudo apt-get autoremove -y
 sleep 10
+
 clear
+
+if lsof -i :80 | grep -q 'LISTEN'; then
+    echo "Port 80 is currently in use by the following service(s):"
+    lsof -i :80 | grep 'LISTEN' | awk '{print "Process ID (PID): " $2 ", Command: " $1}'
+    echo "Please free port 80 and restart the script."
+    exit 1
+else
+    echo "Port 80 is free."
+fi
+
 read -p "Enter the domain for your server (e.g., example.com): " botDomain
 read -p "Enter your server's public IP address: " serverIP
 
@@ -118,54 +165,9 @@ clear
 
 read -p "Enter the bot token: " botToken
 read -p "Enter the allowed admin IDs (comma separated): " adminIds
-read -p "Enter the bot database name (default: marzhelp): " botDbName
-botDbName=${botDbName:-marzhelp}
-read -p "Enter the VPN database name (default: marzban): " vpnDbName
-vpnDbName=${vpnDbName:-marzban}
+
 read -p "Enter the MySQL root password for Docker: " -r dbRootPass
 
-mysql -h 127.0.0.1 -u root -p"$dbRootPass" -e "CREATE DATABASE IF NOT EXISTS $botDbName;"
-mysql -h 127.0.0.1 -u root -p"$dbRootPass" $botDbName <<EOF
-CREATE TABLE IF NOT EXISTS admin_settings (
-  admin_id int NOT NULL,
-  total_traffic bigint DEFAULT NULL,
-  expiry_date date DEFAULT NULL,
-  status varchar(50) DEFAULT 'active',
-  user_limit bigint DEFAULT NULL,
-  PRIMARY KEY (admin_id)
-);
-CREATE TABLE IF NOT EXISTS allowed_users (
-  id int NOT NULL AUTO_INCREMENT,
-  telegram_id bigint NOT NULL,
-  username varchar(255) NOT NULL,
-  created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY telegram_id (telegram_id)
-);
-CREATE TABLE IF NOT EXISTS user_states (
-  user_id bigint NOT NULL,
-  state varchar(50) DEFAULT NULL,
-  admin_id int DEFAULT NULL,
-  updated_at timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  data text,
-  message_id int DEFAULT NULL,
-  PRIMARY KEY (user_id)
-);
-CREATE TABLE IF NOT EXISTS user_temporaries (
-  user_id int NOT NULL,
-  user_key varchar(50) NOT NULL,
-  value text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-EOF
-
-IFS=',' read -ra ADMIN_IDS_ARRAY <<< "$adminIds"
-for adminId in "${ADMIN_IDS_ARRAY[@]}"; do
-  existingUser=$(mysql -h 127.0.0.1 -u root -p"$dbRootPass" $botDbName -se "SELECT COUNT(*) FROM allowed_users WHERE telegram_id = $adminId;")
-  if [ "$existingUser" -eq 0 ]; then
-    mysql -h 127.0.0.1 -u root -p"$dbRootPass" $botDbName -e "INSERT INTO allowed_users (telegram_id, username) VALUES ($adminId, '');"
-  fi
-done
 mysql -h 127.0.0.1 -u root -p"$dbRootPass" $vpnDbName <<EOF
 CREATE TABLE IF NOT EXISTS user_deletions (
   user_id int DEFAULT NULL,
@@ -206,14 +208,21 @@ cat <<EOL > /var/www/html/marzhelp/config.php
 \$botDbHost = '127.0.0.1';
 \$botDbUser = 'root';
 \$botDbPass = '$dbRootPass';
-\$botDbName = '$botDbName';
+\$botDbName = 'marzhelp';
 
 \$vpnDbHost = '127.0.0.1'; 
 \$vpnDbUser = 'root';
 \$vpnDbPass = '$dbRootPass';
-\$vpnDbName = '$vpnDbName';
+\$vpnDbName = 'marzban';
 ?>
 EOL
+
+if [ -f "/var/www/html/marzhelp/table.php" ]; then
+    php /var/www/html/marzhelp/table.php
+    echo "table.php executed successfully."
+else
+    echo "table.php not found."
+fi
 
 
 curl "https://api.telegram.org/bot$botToken/setWebhook?url=https://$botDomain:88/marzhelp/bot.php&ip_address=$serverIP&max_connections=40"
