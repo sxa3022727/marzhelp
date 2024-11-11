@@ -65,7 +65,7 @@ else
 
     sudo apt-get install -y ufw
     sudo ufw allow 80
-
+fi
 # Stop & disable Apache if installed
 if systemctl is-active --quiet apache2; then
     echo "Apache is currently running. Stopping Apache..."
