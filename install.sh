@@ -1,99 +1,96 @@
 #!/bin/bash
 
+set -e
+
+read_env_variable() {
+    local var_name="$1"
+    local env_file="$2"
+    grep -E "^\s*${var_name}=" "$env_file" | grep -v '^\s*#' | head -n1 | cut -d'=' -f2- | tr -d '"'
+}
+
 if [ "$(id -u)" -ne 0 ]; then
-    echo "Please run as root"
-    exit
+    echo "Please run the script as root."
+    exit 1
 fi
 
 clear
 
-if dpkg -l | grep -q "^ii  nginx"; then
-    echo "Nginx is already installed. Retrieving current configuration..."
+ENV_FILE="/opt/marzban/.env"
 
-    nginx_conf_file=$(nginx -t 2>&1 | grep -oP '/etc/nginx/[^:]+')
-    if [ -f "$nginx_conf_file" ]; then
-        root_dir=$(grep -oP 'root\s+\K[^;]+' "$nginx_conf_file" | head -1)
-        port=$(grep -oP 'listen\s+\K[0-9]+' "$nginx_conf_file" | head -1)
-
-        if [ -z "$root_dir" ]; then
-            echo "Failed to retrieve the root directory from Nginx configuration."
-            exit 1
-        fi
-
-        echo "Root directory for Nginx: $root_dir"
-        echo "Port for Nginx: $port"
-
-        if [ -d "$root_dir/marzhelp" ]; then
-            echo "Marzhelp directory already exists in $root_dir. Pulling latest changes..."
-            cd "$root_dir/marzhelp"
-            git reset --hard HEAD
-            git pull origin main
-        else
-            echo "Cloning Marzhelp repository in $root_dir..."
-            git clone https://github.com/ppouria/marzhelp.git "$root_dir/marzhelp"
-        fi
-
-        sudo chown -R www-data:www-data "$root_dir/marzhelp/"
-        sudo chmod -R 755 "$root_dir/marzhelp/"
-
-        read -p "Enter the domain for your server (e.g., example.com): " botDomain
-        read -p "Enter your server's public IP address: " serverIP
-
-        curl "https://api.telegram.org/bot$botToken/setWebhook?url=https://$botDomain:$port/marzhelp/webhook.php&ip_address=$serverIP&max_connections=40"
-
-        echo "Webhook set to https://$botDomain:$port/marzhelp/bot.php"
-        echo "Your Marzhelp project has been updated successfully."
-        exit 0
-    else
-        echo "Could not find the Nginx configuration file."
-        exit 1
-    fi
+if [ -f "$ENV_FILE" ]; then
+    MYSQL_ROOT_PASSWORD=$(read_env_variable "MYSQL_ROOT_PASSWORD" "$ENV_FILE")
 else
+    MYSQL_ROOT_PASSWORD=""
+fi
+
+while [ -z "$MYSQL_ROOT_PASSWORD" ]; do
+    if [ -f "$ENV_FILE" ]; then
+        echo "Warning: MYSQL_ROOT_PASSWORD is empty in $ENV_FILE."
+    else
+        echo "Warning: .env file not found at $ENV_FILE."
+    fi
+    read -s -p "Enter the MySQL root password: " MYSQL_ROOT_PASSWORD
+    echo
+    if [ -z "$MYSQL_ROOT_PASSWORD" ]; then
+        echo "Error: MySQL root password cannot be empty. Please try again."
+    fi
+done
+
+read -p "Enter the Telegram bot token: " botToken
+if [ -z "$botToken" ]; then
+    echo "Error: Telegram bot token cannot be empty. Exiting."
+    exit 1
+fi
+
+read -p "Enter the admin user IDs separated by commas (e.g., 123456,789012): " adminIds
+if [ -z "$adminIds" ]; then
+    echo "Error: Admin user IDs cannot be empty. Exiting."
+    exit 1
+fi
+
+vpnDbName="marzban"
+
+IFS=',' read -r -a adminIdsArray <<< "$adminIds"
+allowed_users_formatted=$(printf ",%s" "${adminIdsArray[@]}")
+allowed_users_formatted=${allowed_users_formatted:1}
+
+if ! dpkg -l | grep -q "^ii  nginx"; then
     echo "Nginx is not installed. Proceeding with installation..."
-
-    sudo apt update && sudo apt upgrade -y
-    sudo apt install software-properties-common -y
-    sudo add-apt-repository ppa:ondrej/php -y
-    sudo apt update
-    apt install mysql-client-core-8.0
-    sudo apt install -y nginx php php-cli php-fpm php-curl php-mbstring php-xml php-zip php-soap libssh2-1-dev libssh2-1 git wget unzip curl certbot python3-certbot-nginx
-
+    apt update && apt upgrade -y
+    apt install software-properties-common -y
+    add-apt-repository ppa:ondrej/php -y
+    apt update
+    apt install mysql-client-core-8.0 -y
+    apt install -y nginx php php-cli php-fpm php-curl php-mbstring php-xml php-zip php-soap libssh2-1-dev libssh2-1 git wget unzip curl certbot python3-certbot-nginx
     sleep 15
-
-    sudo systemctl enable nginx
-    sudo systemctl start nginx
-
-    sudo apt-get install -y ufw
-    sudo ufw allow 80
-fi
-# Stop & disable Apache if installed
-if systemctl is-active --quiet apache2; then
-    echo "Apache is currently running. Stopping Apache..."
-    sudo systemctl stop apache2
-    sudo systemctl disable apache2
-
-    if lsof -i :80 | grep -q 'apache2'; then
-        echo "Apache was using port 80. Killing processes to free the port..."
-        sudo kill -9 $(lsof -t -i :80)
-        echo "Port 80 has been freed."
+    systemctl enable nginx
+    systemctl start nginx
+    apt-get install -y ufw
+    ufw allow 80
+    if systemctl is-active --quiet apache2; then
+        echo "Apache is running. Stopping Apache..."
+        systemctl stop apache2
+        systemctl disable apache2
+        if lsof -i :80 | grep -q 'apache2'; then
+            echo "Killing Apache processes to free port 80..."
+            kill -9 $(lsof -t -i :80)
+            echo "Port 80 freed."
+        else
+            echo "Port 80 not used by Apache or already free."
+        fi
     else
-        echo "Port 80 was not in use by Apache or already free."
+        echo "Apache is not running or installed."
     fi
-else
-    echo "Apache is not running or installed."
+    sleep 10
 fi
 
-sleep 10
-
-clear
-
-if lsof -i :80 | grep -q 'LISTEN'; then
-    echo "Port 80 is currently in use by the following service(s):"
-    lsof -i :80 | grep 'LISTEN' | awk '{print "Process ID (PID): " $2 ", Command: " $1}'
+if lsof -i :80 | grep -q 'LISTEN' && ! lsof -i :80 | grep -q 'nginx'; then
+    echo "Port 80 is in use by other services:"
+    lsof -i :80 | grep 'LISTEN' | grep -v 'nginx' | awk '{print "PID: " $2 ", Command: " $1}'
     echo "Please free port 80 and restart the script."
     exit 1
 else
-    echo "Port 80 is free."
+    echo "Port 80 is free or used by Nginx."
 fi
 
 read -p "Enter the domain for your server (e.g., example.com): " botDomain
@@ -108,8 +105,8 @@ sudo systemctl restart nginx
 echo "Obtaining SSL certificate..."
 sudo certbot certonly --nginx --agree-tos --no-eff-email --redirect --hsts --staple-ocsp --preferred-challenges http -d $botDomain --http-01-port 80
 
-if [ ! -f /etc/letsencrypt/live/$botDomain/fullchain.pem ]; then
-    echo "SSL certificate not issued. Please check certbot logs."
+if [ ! -f "/etc/letsencrypt/live/$botDomain/fullchain.pem" ]; then
+    echo "SSL certificate not issued. Check Certbot logs."
     exit 1
 fi
 
@@ -163,12 +160,9 @@ sleep 10
 
 clear
 
-read -p "Enter the bot token: " botToken
-read -p "Enter the allowed admin IDs (comma separated): " adminIds
+mysql -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS marzhelp;"
 
-read -p "Enter the MySQL root password for Docker: " -r dbRootPass
-
-mysql -h 127.0.0.1 -u root -p"$dbRootPass" $vpnDbName <<EOF
+mysql -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" "$vpnDbName" <<EOF
 CREATE TABLE IF NOT EXISTS user_deletions (
   user_id int DEFAULT NULL,
   admin_id int DEFAULT NULL,
@@ -178,25 +172,14 @@ CREATE TABLE IF NOT EXISTS user_deletions (
 );
 EOF
 
-
 if [ -d "/var/www/html/marzhelp" ]; then
-    echo "Marzhelp directory already exists. Pulling latest changes from GitHub..."
-    cd /var/www/html/marzhelp
-    git reset --hard HEAD 
-    git pull origin main  
-else
+    rm -rf /var/www/html/marzhelp
+fi
     echo "Cloning Marzhelp repository from GitHub..."
     git clone https://github.com/ppouria/marzhelp.git /var/www/html/marzhelp
-fi
 
-sudo chown -R www-data:www-data /var/www/html/marzhelp/
-sudo chmod -R 755 /var/www/html/marzhelp/
-
-allowed_users_formatted=$(IFS=', '; echo "${adminIds[*]}")
-
-if [[ $dbRootPass == *\\ ]]; then
-    dbRootPass="${dbRootPass}\\"
-fi
+chown -R www-data:www-data /var/www/html/marzhelp/
+chmod -R 755 /var/www/html/marzhelp/
 
 cat <<EOL > /var/www/html/marzhelp/config.php
 <?php
@@ -207,13 +190,13 @@ cat <<EOL > /var/www/html/marzhelp/config.php
 
 \$botDbHost = '127.0.0.1';
 \$botDbUser = 'root';
-\$botDbPass = '$dbRootPass';
+\$botDbPass = '$MYSQL_ROOT_PASSWORD';
 \$botDbName = 'marzhelp';
 
 \$vpnDbHost = '127.0.0.1'; 
 \$vpnDbUser = 'root';
-\$vpnDbPass = '$dbRootPass';
-\$vpnDbName = 'marzban';
+\$vpnDbPass = '$MYSQL_ROOT_PASSWORD';
+\$vpnDbName = '$vpnDbName';
 ?>
 EOL
 
@@ -224,11 +207,9 @@ else
     echo "table.php not found."
 fi
 
-
 curl "https://api.telegram.org/bot$botToken/setWebhook?url=https://$botDomain:88/marzhelp/webhook.php&ip_address=$serverIP&max_connections=40"
 
-sudo systemctl restart nginx
+systemctl restart nginx
 clear
-echo "Webhook set to https://$botDomain:88/marzhelp/bot.php"
-
-echo "Your Marzhelp has been successfully installed."
+echo "Webhook set to https://$botDomain:88/marzhelp/webhook.php"
+echo "Marzhelp has been successfully installed."
