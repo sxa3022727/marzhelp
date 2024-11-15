@@ -13,10 +13,7 @@ bash <(curl -s https://raw.githubusercontent.com/ppouria/marzhelp/main/install.s
 ```
 
 #### Important Note
-During the installation process, **port 80** will be temporarily opened to obtain an SSL certificate for the domain using Let's Encrypt. Once the SSL certificate is obtained and configured, **port 88** will be used permanently for serving this project. This ensures that all connections are secured using SSL.س
-
-### Warning
-If you already have Nginx installed, do not install the bot using this script, as the script will remove Nginx if it detects an existing installation.
+During the installation process, **port 80** will be temporarily opened to obtain an SSL certificate for the domain using Let's Encrypt. Once the SSL certificate is obtained and configured, **port 88** will be used permanently for serving this project. This ensures that all connections are secured using SSL.
 
 ## Description
 
