@@ -14,6 +14,8 @@ if (php_sapi_name() !== 'cli') {
 
 require 'config.php';
 
+$latestVersion = 'v0.1.1';
+
 $botConn = new mysqli($botDbHost, $botDbUser, $botDbPass, $botDbName);
 if ($botConn->connect_error) {
     file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Bot DB connection failed: " . $botConn->connect_error . "\n", FILE_APPEND);
@@ -94,7 +96,6 @@ function sendRequest($method, $parameters) {
     
     return $result;
 }
-
 function getMainMenuKeyboard($userId) {
     global $allowedUsers;
     $lang = getLang($userId);
@@ -779,7 +780,7 @@ function getAdminInfoText($adminInfo, $userId) {
 }
 
 function handleCallbackQuery($callback_query) {
-    global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $vpnDbPass, $apiURL;
+    global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $vpnDbPass, $apiURL, $latestVersion;
 
     $callbackId = $callback_query['id'];
     $userId = $callback_query['from']['id'];
@@ -2627,7 +2628,7 @@ function handleCallbackQuery($callback_query) {
             sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
-                'text' => $lang['settings_menu'],
+                'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
                 'reply_markup' => json_encode($keyboard)
             ]);
         
