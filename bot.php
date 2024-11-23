@@ -1,15 +1,16 @@
 <?php
 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+date_default_timezone_set('Asia/Tehran');
+
 if (php_sapi_name() !== 'cli') {
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         header("Location: https://roverloom.com/");
         exit;
     }
 }
-
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
 
 require 'config.php';
 
@@ -21,13 +22,13 @@ if ($botConn->connect_error) {
 $botConn->set_charset("utf8");
 
 // If you have run MySql on a different port
-// $vpnConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName, $vpnDbPort);
-$vpnConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName);
-if ($vpnConn->connect_error) {
-    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - VPN DB connection failed: " . $vpnConn->connect_error . "\n", FILE_APPEND);
+// $marzbanConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName, $vpnDbPort);
+$marzbanConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName);
+if ($marzbanConn->connect_error) {
+    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - VPN DB connection failed: " . $marzbanConn->connect_error . "\n", FILE_APPEND);
     exit;
 }
-$vpnConn->set_charset("utf8");
+$marzbanConn->set_charset("utf8");
 
 function getLang($userId) {
     global $botConn;
@@ -95,17 +96,35 @@ function sendRequest($method, $parameters) {
 }
 
 function getMainMenuKeyboard($userId) {
+    global $allowedUsers;
     $lang = getLang($userId);
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['manage_admins'], 'callback_data' => 'manage_admins']
-            ],
-            [
-                ['text' => $lang['account_info'], 'callback_data' => 'account_info'] 
+
+    if (in_array($userId, $allowedUsers)) {
+        return [
+            'inline_keyboard' => [
+                [
+                    ['text' => $lang['manage_admins'], 'callback_data' => 'manage_admins']
+                ],
+                [
+                    ['text' => $lang['account_info'], 'callback_data' => 'account_info']
+                ],
+                [
+                    ['text' => $lang['settings'], 'callback_data' => 'settings']
+                ]
             ]
-        ]
-    ];
+        ];
+    } else {
+        return [
+            'inline_keyboard' => [
+                [
+                    ['text' => $lang['manage_admins'], 'callback_data' => 'manage_admins']
+                ],
+                [
+                    ['text' => $lang['account_info'], 'callback_data' => 'account_info']
+                ]
+            ]
+        ];
+    }
 }
 
 function getbacktoadminselectbutton($userId) {
@@ -219,6 +238,29 @@ function getprotocolsttingskeyboard($adminId, $userId) {
         ]
     ];
     
+}
+
+function getSettingsMenuKeyboard($userId) {
+    $lang = getLang($userId);
+
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => $lang['update_bot'], 'callback_data' => 'update_bot'],
+                ['text' => $lang['save_admin_traffic'], 'callback_data' => 'save_admin_traffic']
+            ],
+            [
+                ['text' => $lang['update_marzban'], 'callback_data' => 'update_marzban'],
+                ['text' => $lang['restart_marzban'], 'callback_data' => 'restart_marzban']
+            ],
+            [
+                ['text' => $lang['backup'], 'callback_data' => 'backup']
+            ],
+            [
+                ['text' => $lang['back'], 'callback_data' => 'back_to_main']
+            ]
+        ]
+    ];
 }
 
 function getSecurityKeyboard($adminId, $userId) {
@@ -345,13 +387,13 @@ function getRestrictionsKeyboard($adminId, $preventUserDeletion, $preventUserCre
     }
 
     function getUserRole($telegramId) {
-    global $allowedUsers, $vpnConn;
+    global $allowedUsers, $marzbanConn;
     
     if (in_array($telegramId, $allowedUsers)) {
         return 'main_admin';
     }
     
-    $stmt = $vpnConn->prepare("SELECT id FROM admins WHERE telegram_id = ?");
+    $stmt = $marzbanConn->prepare("SELECT id FROM admins WHERE telegram_id = ?");
     $stmt->bind_param("i", $telegramId);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -395,7 +437,7 @@ function generateRandomPassword($length = 12) {
 }
 
 function createAdmin($userId, $chatId) {
-    global $vpnConn, $botConn;
+    global $marzbanConn, $botConn;
 
     $lang = getLang($userId); 
 
@@ -426,7 +468,7 @@ function createAdmin($userId, $chatId) {
 
     $createdAt = date('Y-m-d H:i:s');
 
-    $stmt = $vpnConn->prepare("INSERT INTO admins (username, hashed_password, created_at, is_sudo, telegram_id) VALUES (?, ?, ?, ?, ?)");
+    $stmt = $marzbanConn->prepare("INSERT INTO admins (username, hashed_password, created_at, is_sudo, telegram_id) VALUES (?, ?, ?, ?, ?)");
     $stmt->bind_param("sssii", $username, $hashedPassword, $createdAt, $isSudo, $telegramId);
     
     if ($stmt->execute()) {
@@ -559,11 +601,11 @@ function handleTemporaryData($operation, $userId, $key = null, $value = null) {
 
 
 function getAdminInfo($adminId) {
-    global $vpnConn, $botConn;
+    global $marzbanConn, $botConn;
 
     $lang = getLang($adminId);
 
-    $stmtAdmin = $vpnConn->prepare("SELECT username FROM admins WHERE id = ?");
+    $stmtAdmin = $marzbanConn->prepare("SELECT username FROM admins WHERE id = ?");
     $stmtAdmin->bind_param("i", $adminId);
     $stmtAdmin->execute();
     $adminResult = $stmtAdmin->get_result();
@@ -574,7 +616,7 @@ function getAdminInfo($adminId) {
     $adminUsername = $admin['username'];
     $stmtAdmin->close();
 
-    $stmtTraffic = $vpnConn->prepare("
+    $stmtTraffic = $marzbanConn->prepare("
     SELECT admins.username, 
     (
         (
@@ -625,7 +667,7 @@ function getAdminInfo($adminId) {
 
     $status = isset($settings['status']) ? $settings['status'] : 'active';
 
-    $stmtUserStats = $vpnConn->prepare("
+    $stmtUserStats = $marzbanConn->prepare("
         SELECT
             COUNT(*) AS total_users,
             SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_users,
@@ -647,11 +689,11 @@ function getAdminInfo($adminId) {
         $remainingUserLimit = '♾️';
     }
 
-    $preventUserCreation = triggerCheck($vpnConn, 'prevent_user_creation', $adminId);
-    $preventUserReset = triggerCheck($vpnConn, 'prevent_User_Reset_Usage', $adminId);
-    $preventRevokeSubscription = triggerCheck($vpnConn, 'prevent_revoke_subscription', $adminId);
-    $preventUnlimitedTraffic = triggerCheck($vpnConn, 'prevent_unlimited_traffic', $adminId);
-    $preventUserDelete = triggerCheck($vpnConn, 'admin_delete', $adminId);
+    $preventUserCreation = triggerCheck($marzbanConn, 'prevent_user_creation', $adminId);
+    $preventUserReset = triggerCheck($marzbanConn, 'prevent_User_Reset_Usage', $adminId);
+    $preventRevokeSubscription = triggerCheck($marzbanConn, 'prevent_revoke_subscription', $adminId);
+    $preventUnlimitedTraffic = triggerCheck($marzbanConn, 'prevent_unlimited_traffic', $adminId);
+    $preventUserDelete = triggerCheck($marzbanConn, 'admin_delete', $adminId);
 
     return [
         'username' => $adminUsername,
@@ -737,7 +779,7 @@ function getAdminInfoText($adminInfo, $userId) {
 }
 
 function handleCallbackQuery($callback_query) {
-    global $botConn, $vpnConn, $allowedUsers;
+    global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $vpnDbPass, $apiURL;
 
     $callbackId = $callback_query['id'];
     $userId = $callback_query['from']['id'];
@@ -839,10 +881,10 @@ function handleCallbackQuery($callback_query) {
     
         $triggerName = 'prevent_revoke_subscription';
     
-        $triggerExistsResult = $vpnConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
+        $triggerExistsResult = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
         $adminIds = [];
         if ($triggerExistsResult && $triggerExistsResult->num_rows > 0) {
-            $triggerResult = $vpnConn->query("SHOW CREATE TRIGGER `$triggerName`");
+            $triggerResult = $marzbanConn->query("SHOW CREATE TRIGGER `$triggerName`");
             if ($triggerResult && $triggerResult->num_rows > 0) {
                 $triggerRow = $triggerResult->fetch_assoc();
                 $triggerBody = $triggerRow['SQL Original Statement'];
@@ -861,7 +903,7 @@ function handleCallbackQuery($callback_query) {
         }
     
         if (empty($adminIds)) {
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
         } else {
             $adminIdsStr = implode(', ', $adminIds);
             $triggerBody = "
@@ -874,8 +916,8 @@ function handleCallbackQuery($callback_query) {
             END;
             ";
     
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
-            $vpnConn->query($triggerBody);
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query($triggerBody);
         }
     
         $adminInfo = getAdminInfo($adminId, $userId);
@@ -947,10 +989,10 @@ function handleCallbackQuery($callback_query) {
     
         $triggerName = 'prevent_user_creation';
     
-        $triggerExistsResult = $vpnConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
+        $triggerExistsResult = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
         $adminIds = [];
         if ($triggerExistsResult && $triggerExistsResult->num_rows > 0) {
-            $triggerResult = $vpnConn->query("SHOW CREATE TRIGGER `$triggerName`");
+            $triggerResult = $marzbanConn->query("SHOW CREATE TRIGGER `$triggerName`");
             if ($triggerResult && $triggerResult->num_rows > 0) {
                 $triggerRow = $triggerResult->fetch_assoc();
                 $triggerBody = $triggerRow['SQL Original Statement'];
@@ -969,7 +1011,7 @@ function handleCallbackQuery($callback_query) {
         }
     
         if (empty($adminIds)) {
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
         } else {
             $adminIdsStr = implode(', ', $adminIds);
             $triggerBody = "
@@ -982,8 +1024,8 @@ function handleCallbackQuery($callback_query) {
             END;
             ";
     
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
-            $vpnConn->query($triggerBody);
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query($triggerBody);
         }
     
         $adminInfo = getAdminInfo($adminId, $userId);
@@ -1018,10 +1060,10 @@ function handleCallbackQuery($callback_query) {
     
         $triggerName = 'prevent_unlimited_traffic';
     
-        $triggerExistsResult = $vpnConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
+        $triggerExistsResult = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
         $adminIds = [];
         if ($triggerExistsResult && $triggerExistsResult->num_rows > 0) {
-            $triggerResult = $vpnConn->query("SHOW CREATE TRIGGER `$triggerName`");
+            $triggerResult = $marzbanConn->query("SHOW CREATE TRIGGER `$triggerName`");
             if ($triggerResult && $triggerResult->num_rows > 0) {
                 $triggerRow = $triggerResult->fetch_assoc();
                 $triggerBody = $triggerRow['SQL Original Statement'];
@@ -1038,7 +1080,7 @@ function handleCallbackQuery($callback_query) {
             $adminIds[] = $adminId;
         }
         if (empty($adminIds)) {
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
         } else {
             $adminIdsStr = implode(', ', $adminIds);
             $triggerBody = "
@@ -1054,8 +1096,8 @@ function handleCallbackQuery($callback_query) {
             END;
             ";
     
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
-            $vpnConn->query($triggerBody);
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query($triggerBody);
         }
         $adminInfo = getAdminInfo($adminId, $userId);
         if (!$adminInfo) {
@@ -1083,9 +1125,9 @@ function handleCallbackQuery($callback_query) {
     }
     if ($data === 'manage_admins') {
         if (in_array($userId, $allowedUsers)) {
-            $adminsResult = $vpnConn->query("SELECT id, username FROM admins");
+            $adminsResult = $marzbanConn->query("SELECT id, username FROM admins");
         } else {
-            $stmt = $vpnConn->prepare("SELECT id, username FROM admins WHERE telegram_id = ?");
+            $stmt = $marzbanConn->prepare("SELECT id, username FROM admins WHERE telegram_id = ?");
             $stmt->bind_param("i", $userId);
             $stmt->execute();
             $adminsResult = $stmt->get_result();
@@ -1147,10 +1189,10 @@ function handleCallbackQuery($callback_query) {
     
         $triggerName = 'admin_delete';
     
-        $triggerExistsResult = $vpnConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
+        $triggerExistsResult = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
         $adminIds = [];
         if ($triggerExistsResult && $triggerExistsResult->num_rows > 0) {
-            $triggerResult = $vpnConn->query("SHOW CREATE TRIGGER `$triggerName`");
+            $triggerResult = $marzbanConn->query("SHOW CREATE TRIGGER `$triggerName`");
             if ($triggerResult && $triggerResult->num_rows > 0) {
                 $triggerRow = $triggerResult->fetch_assoc();
                 $triggerBody = $triggerRow['SQL Original Statement'];
@@ -1169,7 +1211,7 @@ function handleCallbackQuery($callback_query) {
         }
     
         if (empty($adminIds)) {
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
         } else {
             $adminIdsStr = implode(', ', $adminIds);
             $triggerBody = "
@@ -1182,8 +1224,8 @@ function handleCallbackQuery($callback_query) {
             END
             ";
     
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
-            $vpnConn->query($triggerBody);
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query($triggerBody);
         }
     
         $adminInfo = getAdminInfo($adminId, $userId);
@@ -1227,7 +1269,7 @@ function handleCallbackQuery($callback_query) {
     if (strpos($data, 'disable_inbounds:') === 0) {
         $adminId = intval(substr($data, strlen('disable_inbounds:')));
     
-        $inboundsResult = $vpnConn->query("SELECT tag FROM inbounds");
+        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
         $inbounds = [];
         while ($row = $inboundsResult->fetch_assoc()) {
             $inbounds[] = $row['tag'];
@@ -1257,7 +1299,7 @@ function handleCallbackQuery($callback_query) {
     if (strpos($data, 'disable_inbound_select:') === 0) {
         list(, $adminId, $inboundTag) = explode(':', $data, 3);
     
-        $stmt = $vpnConn->prepare("SELECT username FROM admins WHERE id = ?");
+        $stmt = $marzbanConn->prepare("SELECT username FROM admins WHERE id = ?");
         $stmt->bind_param("i", $adminId);
         $stmt->execute();
         $adminResult = $stmt->get_result();
@@ -1274,8 +1316,8 @@ function handleCallbackQuery($callback_query) {
         $adminRow = $adminResult->fetch_assoc();
         $adminUsername = $adminRow['username'];
     
-        $inboundTagEscaped = $vpnConn->real_escape_string($inboundTag);
-        $adminUsernameEscaped = $vpnConn->real_escape_string($adminUsername);
+        $inboundTagEscaped = $marzbanConn->real_escape_string($inboundTag);
+        $adminUsernameEscaped = $marzbanConn->real_escape_string($adminUsername);
     
         $sql = "
             INSERT INTO exclude_inbounds_association (proxy_id, inbound_tag)
@@ -1289,7 +1331,7 @@ function handleCallbackQuery($callback_query) {
             );
         ";
     
-        if ($vpnConn->query($sql) === TRUE) {
+        if ($marzbanConn->query($sql) === TRUE) {
             sendRequest('answerCallbackQuery', [
                 'callback_query_id' => $callbackId,
                 'text' => $lang['inbound_disabled'],
@@ -1320,7 +1362,7 @@ function handleCallbackQuery($callback_query) {
     if (strpos($data, 'enable_inbound_select:') === 0) {
         list(, $adminId, $inboundTag) = explode(':', $data, 3);
     
-        $stmt = $vpnConn->prepare("SELECT username FROM admins WHERE id = ?");
+        $stmt = $marzbanConn->prepare("SELECT username FROM admins WHERE id = ?");
         $stmt->bind_param("i", $adminId);
         $stmt->execute();
         $adminResult = $stmt->get_result();
@@ -1337,8 +1379,8 @@ function handleCallbackQuery($callback_query) {
         $adminRow = $adminResult->fetch_assoc();
         $adminUsername = $adminRow['username'];
     
-        $inboundTagEscaped = $vpnConn->real_escape_string($inboundTag);
-        $adminUsernameEscaped = $vpnConn->real_escape_string($adminUsername);
+        $inboundTagEscaped = $marzbanConn->real_escape_string($inboundTag);
+        $adminUsernameEscaped = $marzbanConn->real_escape_string($adminUsername);
     
         $sql = "
             DELETE FROM exclude_inbounds_association
@@ -1351,7 +1393,7 @@ function handleCallbackQuery($callback_query) {
             )
             AND inbound_tag = '$inboundTagEscaped';
         ";
-        if ($vpnConn->query($sql) === TRUE) {
+        if ($marzbanConn->query($sql) === TRUE) {
             sendRequest('answerCallbackQuery', [
                 'callback_query_id' => $callbackId,
                 'text' => $lang['inbound_enabled'],
@@ -1381,7 +1423,7 @@ function handleCallbackQuery($callback_query) {
     if (strpos($data, 'enable_inbounds:') === 0) {
         $adminId = intval(substr($data, strlen('enable_inbounds:')));
     
-        $inboundsResult = $vpnConn->query("SELECT tag FROM inbounds");
+        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
         $inbounds = [];
         while ($row = $inboundsResult->fetch_assoc()) {
             $inbounds[] = $row['tag'];
@@ -1428,7 +1470,7 @@ function handleCallbackQuery($callback_query) {
             $newData = json_encode(array_values($selectedInbounds));
             handleUserState('update', $userId, null, $newData);
     
-            $inboundsResult = $vpnConn->query("SELECT tag FROM inbounds");
+            $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
             $inbounds = [];
             while ($row = $inboundsResult->fetch_assoc()) {
                 $inbounds[] = $row['tag'];
@@ -1481,7 +1523,7 @@ function handleCallbackQuery($callback_query) {
                 return;
             }
     
-            $stmt = $vpnConn->prepare("SELECT username FROM admins WHERE id = ?");
+            $stmt = $marzbanConn->prepare("SELECT username FROM admins WHERE id = ?");
             $stmt->bind_param("i", $adminId);
             $stmt->execute();
             $adminResult = $stmt->get_result();
@@ -1498,12 +1540,12 @@ function handleCallbackQuery($callback_query) {
             $adminRow = $adminResult->fetch_assoc();
             $adminUsername = $adminRow['username'];
     
-            $inboundSelects = array_map(function($inbound) use ($vpnConn) {
-                return "SELECT '" . $vpnConn->real_escape_string($inbound) . "' AS inbound_tag";
+            $inboundSelects = array_map(function($inbound) use ($marzbanConn) {
+                return "SELECT '" . $marzbanConn->real_escape_string($inbound) . "' AS inbound_tag";
             }, $selectedInbounds);
             $inboundUnion = implode(" UNION ALL ", $inboundSelects);
     
-            $adminUsernameEscaped = $vpnConn->real_escape_string($adminUsername);
+            $adminUsernameEscaped = $marzbanConn->real_escape_string($adminUsername);
     
             $sql = "
                 INSERT INTO exclude_inbounds_association (proxy_id, inbound_tag)
@@ -1520,7 +1562,7 @@ function handleCallbackQuery($callback_query) {
                 AND eia.proxy_id IS NULL;
             ";
     
-            if ($vpnConn->query($sql) === TRUE) {
+            if ($marzbanConn->query($sql) === TRUE) {
                 sendRequest('sendMessage', [
                     'chat_id' => $chatId,
                     'text' => $lang['inbound_disabled']
@@ -1619,7 +1661,7 @@ function handleCallbackQuery($callback_query) {
                 return;
             }
     
-            $stmt = $vpnConn->prepare("SELECT username FROM admins WHERE id = ?");
+            $stmt = $marzbanConn->prepare("SELECT username FROM admins WHERE id = ?");
             $stmt->bind_param("i", $adminId);
             $stmt->execute();
             $adminResult = $stmt->get_result();
@@ -1636,12 +1678,12 @@ function handleCallbackQuery($callback_query) {
             $adminRow = $adminResult->fetch_assoc();
             $adminUsername = $adminRow['username'];
     
-            $inboundTagsEscaped = array_map(function($inbound) use ($vpnConn) {
-                return "'" . $vpnConn->real_escape_string($inbound) . "'";
+            $inboundTagsEscaped = array_map(function($inbound) use ($marzbanConn) {
+                return "'" . $marzbanConn->real_escape_string($inbound) . "'";
             }, $selectedInbounds);
             $inboundTagsList = implode(", ", $inboundTagsEscaped);
     
-            $adminUsernameEscaped = $vpnConn->real_escape_string($adminUsername);
+            $adminUsernameEscaped = $marzbanConn->real_escape_string($adminUsername);
     
             $sql = "
                 DELETE FROM exclude_inbounds_association
@@ -1655,7 +1697,7 @@ function handleCallbackQuery($callback_query) {
                 AND inbound_tag IN ($inboundTagsList);
             ";
     
-            if ($vpnConn->query($sql) === TRUE) {
+            if ($marzbanConn->query($sql) === TRUE) {
                 sendRequest('sendMessage', [
                     'chat_id' => $chatId,
                     'text' => $lang['inbound_enabled']
@@ -1695,10 +1737,10 @@ function handleCallbackQuery($callback_query) {
     
         $triggerName = 'prevent_User_Reset_Usage';
     
-        $triggerExistsResult = $vpnConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
+        $triggerExistsResult = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
         $adminIds = [];
         if ($triggerExistsResult && $triggerExistsResult->num_rows > 0) {
-            $triggerResult = $vpnConn->query("SHOW CREATE TRIGGER `$triggerName`");
+            $triggerResult = $marzbanConn->query("SHOW CREATE TRIGGER `$triggerName`");
             if ($triggerResult && $triggerResult->num_rows > 0) {
                 $triggerRow = $triggerResult->fetch_assoc();
                 $triggerBody = $triggerRow['SQL Original Statement'];
@@ -1717,7 +1759,7 @@ function handleCallbackQuery($callback_query) {
         }
     
         if (empty($adminIds)) {
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
         } else {
             $adminIdsStr = implode(', ', $adminIds);
             $triggerBody = "
@@ -1732,8 +1774,8 @@ function handleCallbackQuery($callback_query) {
             END;
             ";
     
-            $vpnConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
-            $vpnConn->query($triggerBody);
+            $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $marzbanConn->query($triggerBody);
         }
     
         $adminInfo = getAdminInfo($adminId, $userId);
@@ -1829,7 +1871,7 @@ function handleCallbackQuery($callback_query) {
     if (strpos($data, 'confirm_disable_yes:') === 0) {
         $adminId = intval(substr($data, strlen('confirm_disable_yes:')));
 
-        $vpnConn->query("UPDATE users SET status = 'disabled' WHERE admin_id = '$adminId' AND status = 'active'");
+        $marzbanConn->query("UPDATE users SET status = 'disabled' WHERE admin_id = '$adminId' AND status = 'active'");
 
         $stmt = $botConn->prepare("UPDATE admin_settings SET status = 'disabled' WHERE admin_id = ?");
         $stmt->bind_param("i", $adminId);
@@ -1865,7 +1907,7 @@ function handleCallbackQuery($callback_query) {
     if (strpos($data, 'enable_users:') === 0) {
         $adminId = intval(substr($data, strlen('enable_users:')));
 
-        $vpnConn->query("UPDATE users SET status = 'active' WHERE admin_id = '$adminId' AND status = 'disabled'");
+        $marzbanConn->query("UPDATE users SET status = 'active' WHERE admin_id = '$adminId' AND status = 'disabled'");
 
         $stmt = $botConn->prepare("UPDATE admin_settings SET status = 'active' WHERE admin_id = ?");
         $stmt->bind_param("i", $adminId);
@@ -1911,7 +1953,7 @@ function handleCallbackQuery($callback_query) {
             return;
         }
     
-        $inboundsResult = $vpnConn->query("SELECT tag FROM inbounds");
+        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
         $inbounds = [];
         while ($row = $inboundsResult->fetch_assoc()) {
             $inbounds[] = $row['tag'];
@@ -1920,9 +1962,9 @@ function handleCallbackQuery($callback_query) {
         $eventName = "limit_inbound_for_admin_" . $adminInfo['username']; 
         $selectedInbounds = [];
     
-        $eventExistsResult = $vpnConn->query("SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = DATABASE() AND EVENT_NAME = '$eventName'");
+        $eventExistsResult = $marzbanConn->query("SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = DATABASE() AND EVENT_NAME = '$eventName'");
         if ($eventExistsResult && $eventExistsResult->num_rows > 0) {
-            $eventResult = $vpnConn->query("SHOW CREATE EVENT `$eventName`");
+            $eventResult = $marzbanConn->query("SHOW CREATE EVENT `$eventName`");
             if ($eventResult && $eventResult->num_rows > 0) {
                 $eventRow = $eventResult->fetch_assoc();
                 $eventBody = $eventRow['Create Event'];
@@ -1974,10 +2016,10 @@ function handleCallbackQuery($callback_query) {
     
         $eventName = "limit_inbound_for_admin_" . $adminInfo['username'];
     
-        $eventExistsResult = $vpnConn->query("SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = DATABASE() AND EVENT_NAME = '$eventName'");
+        $eventExistsResult = $marzbanConn->query("SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = DATABASE() AND EVENT_NAME = '$eventName'");
         $selectedInbounds = [];
         if ($eventExistsResult && $eventExistsResult->num_rows > 0) {
-            $eventResult = $vpnConn->query("SHOW CREATE EVENT `$eventName`");
+            $eventResult = $marzbanConn->query("SHOW CREATE EVENT `$eventName`");
             if ($eventResult && $eventResult->num_rows > 0) {
                 $eventRow = $eventResult->fetch_assoc();
                 $eventBody = $eventRow['Create Event'];
@@ -1997,9 +2039,9 @@ function handleCallbackQuery($callback_query) {
         }
     
         if (empty($selectedInbounds)) {
-            $vpnConn->query("DROP EVENT IF EXISTS `$eventName`");
+            $marzbanConn->query("DROP EVENT IF EXISTS `$eventName`");
         } else {
-            $adminUsername = $vpnConn->real_escape_string($adminInfo['username']);
+            $adminUsername = $marzbanConn->real_escape_string($adminInfo['username']);
             $inboundSelects = array_map(function ($tag) {
                 return "SELECT '$tag' AS inbound_tag";
             }, $selectedInbounds);
@@ -2020,9 +2062,9 @@ function handleCallbackQuery($callback_query) {
                 AND eia.proxy_id IS NULL;
             ";
     
-            $vpnConn->query("DROP EVENT IF EXISTS `$eventName`");
+            $marzbanConn->query("DROP EVENT IF EXISTS `$eventName`");
     
-            $vpnConn->query("
+            $marzbanConn->query("
                 CREATE EVENT `$eventName`
                 ON SCHEDULE EVERY 1 SECOND
                 DO
@@ -2030,7 +2072,7 @@ function handleCallbackQuery($callback_query) {
             ");
         }
     
-        $inboundsResult = $vpnConn->query("SELECT tag FROM inbounds");
+        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
         $inbounds = [];
         while ($row = $inboundsResult->fetch_assoc()) {
             $inbounds[] = $row['tag'];
@@ -2082,7 +2124,7 @@ function handleCallbackQuery($callback_query) {
     if (strpos($data, 'select_add_protocol:') === 0) {
         list(, $protocol, $adminId) = explode(':', $data);
     
-        $stmt = $vpnConn->prepare("SELECT username FROM admins WHERE id = ?");
+        $stmt = $marzbanConn->prepare("SELECT username FROM admins WHERE id = ?");
         $stmt->bind_param("i", $adminId);
         $stmt->execute();
         $adminResult = $stmt->get_result();
@@ -2098,11 +2140,11 @@ function handleCallbackQuery($callback_query) {
         }
     
         $adminRow = $adminResult->fetch_assoc();
-        $adminUsername = $vpnConn->real_escape_string($adminRow['username']); 
+        $adminUsername = $marzbanConn->real_escape_string($adminRow['username']); 
 
-        $vpnConn->query("SET foreign_key_checks = 0");
+        $marzbanConn->query("SET foreign_key_checks = 0");
     
-        $stmt = $vpnConn->prepare("
+        $stmt = $marzbanConn->prepare("
             INSERT INTO proxies (user_id, type, settings)
             SELECT users.id, ?, CONCAT('{\"id\": \"', CONVERT(UUID(), CHAR), '\"}') 
             FROM users 
@@ -2131,7 +2173,7 @@ function handleCallbackQuery($callback_query) {
         }
         $stmt->close();
     
-        $vpnConn->query("SET foreign_key_checks = 1");
+        $marzbanConn->query("SET foreign_key_checks = 1");
     
         $adminInfo = getAdminInfo($adminId, $userId);
         $adminInfo['adminId'] = $adminId;
@@ -2150,7 +2192,7 @@ function handleCallbackQuery($callback_query) {
     if (strpos($data, 'select_remove_protocol:') === 0) {
         list(, $protocol, $adminId) = explode(':', $data);
     
-        $stmt = $vpnConn->prepare("SELECT username FROM admins WHERE id = ?");
+        $stmt = $marzbanConn->prepare("SELECT username FROM admins WHERE id = ?");
         $stmt->bind_param("i", $adminId);
         $stmt->execute();
         $adminResult = $stmt->get_result();
@@ -2166,10 +2208,10 @@ function handleCallbackQuery($callback_query) {
         }
     
         $adminRow = $adminResult->fetch_assoc();
-        $adminUsername = $vpnConn->real_escape_string($adminRow['username']); 
-        $vpnConn->query("SET foreign_key_checks = 0");
+        $adminUsername = $marzbanConn->real_escape_string($adminRow['username']); 
+        $marzbanConn->query("SET foreign_key_checks = 0");
 
-        $stmt = $vpnConn->prepare("
+        $stmt = $marzbanConn->prepare("
             DELETE FROM proxies
             WHERE type = ? 
               AND user_id IN (
@@ -2196,7 +2238,7 @@ function handleCallbackQuery($callback_query) {
         }
         $stmt->close();
     
-        $vpnConn->query("SET foreign_key_checks = 1");
+        $marzbanConn->query("SET foreign_key_checks = 1");
     
         $adminInfo = getAdminInfo($adminId, $userId);
         $adminInfo['adminId'] = $adminId;
@@ -2282,7 +2324,7 @@ function handleCallbackQuery($callback_query) {
     }
     if (strpos($data, 'set_sudo_yes:') === 0) {
         $adminId = intval(substr($data, strlen('set_sudo_yes:')));
-        $vpnConn->query("UPDATE admins SET is_sudo = 1 WHERE id = '$adminId'");
+        $marzbanConn->query("UPDATE admins SET is_sudo = 1 WHERE id = '$adminId'");
         $adminInfo = getAdminInfo($adminId, $userId);
         $adminInfo['adminId'] = $adminId;
         $infoText = getAdminInfoText($adminInfo, $userId);
@@ -2297,7 +2339,7 @@ function handleCallbackQuery($callback_query) {
     }
     if (strpos($data, 'set_sudo_no:') === 0) {
         $adminId = intval(substr($data, strlen('set_sudo_no:')));
-        $vpnConn->query("UPDATE admins SET is_sudo = 0 WHERE id = '$adminId'");
+        $marzbanConn->query("UPDATE admins SET is_sudo = 0 WHERE id = '$adminId'");
         $adminInfo = getAdminInfo($adminId, $userId);
         $adminInfo['adminId'] = $adminId;
         $infoText = getAdminInfoText($adminInfo, $userId);
@@ -2578,11 +2620,499 @@ function handleCallbackQuery($callback_query) {
                 ])
             ]);
         }
-    }
+        if ($data === 'settings') {
+            
+            $keyboard = getSettingsMenuKeyboard($userId);
+
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => $lang['settings_menu'],
+                'reply_markup' => json_encode($keyboard)
+            ]);
+        
+            return;
+        }
+        if ($data === 'update_bot') {
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => $lang['update_in_progress']
+            ]);
+        
+            $command = "cd /var/www/html/marzhelp && git reset --hard origin/main && git config --global --add safe.directory /var/www/html/marzhelp && git pull 2>&1";
+            exec($command, $output, $return_var);
+        
+            if ($return_var === 0) {
+                $dbUpdateCommand = "php /var/www/html/marzhelp/table.php";
+                exec($dbUpdateCommand, $db_output, $db_return_var);
+        
+        
+                if ($db_return_var === 0) {
+
+                    sendRequest('deleteMessage', [
+                        'chat_id' => $chatId,
+                        'message_id' => $userState['message_id'],
+                    ]);
+                    sendRequest('sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $lang['update_success']
+                    ]);
+                } else {
+                    
+                    sendRequest('deleteMessage', [
+                        'chat_id' => $chatId,
+                        'message_id' => $userState['message_id'],
+                    ]);
+                    sendRequest('sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $lang['db_update_failed'] 
+                    ]);
+                }
+            } else {
+
+                sendRequest('deleteMessage', [
+                    'chat_id' => $chatId,
+                    'message_id' => $userState['message_id'],
+                ]);
+                sendRequest('sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => $lang['update_failed']
+                ]);
+            }
+        
+            return;
+        }
+        if ($data === 'save_admin_traffic') {
+            $triggerExists1 = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'save_user_traffic_used'")->num_rows > 0;
+            $triggerExists2 = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'save_user_traffic_reseted'")->num_rows > 0;
+        
+            $buttonText = ($triggerExists1 && $triggerExists2) ? $lang['deactivate'] : $lang['activate'];
+        
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => $buttonText, 'callback_data' => 'toggle_traffic_triggers']
+                    ],
+                    [
+                        ['text' => $lang['back'], 'callback_data' => 'settings']
+                    ]
+                ]
+            ];
+        
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => $lang['traffic_settings'],
+                'reply_markup' => json_encode($keyboard)
+            ]);
+            return;
+        }
+        
+        if ($data === 'toggle_traffic_triggers') {
+            $triggerExists1 = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'save_user_traffic_used'")->num_rows > 0;
+            $triggerExists2 = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'save_user_traffic_reseted'")->num_rows > 0;
+        
+            if (!$triggerExists1 && !$triggerExists2) {
+                $createTrigger1 = "CREATE TRIGGER `save_user_traffic_used` BEFORE DELETE ON `users` FOR EACH ROW BEGIN INSERT INTO user_deletions (user_id, used_traffic, admin_id) VALUES (OLD.id, OLD.used_traffic, OLD.admin_id); END";
+                $createTrigger2 = "CREATE TRIGGER `save_user_traffic_reseted` BEFORE UPDATE ON `user_usage_logs` FOR EACH ROW BEGIN DECLARE admin_id INT; IF OLD.user_id IS NOT NULL AND NEW.user_id IS NULL THEN SELECT u.admin_id INTO admin_id FROM users u WHERE u.id = OLD.user_id; INSERT INTO user_deletions (user_id, reseted_usage, admin_id) VALUES (OLD.user_id, OLD.used_traffic_at_reset, admin_id); END IF; END";
+        
+                if ($marzbanConn->query($createTrigger1) && $marzbanConn->query($createTrigger2)) {
+                    sendRequest('editMessageText', [
+                        'chat_id' => $chatId,
+                        'message_id' => $messageId,
+                        'text' => $lang['triggers_activated']
+                    ]);
+                } else {
+                    sendRequest('sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $lang['error_creating_triggers']
+                    ]);
+                }
+            } else {
+                $dropTrigger1 = "DROP TRIGGER IF EXISTS `save_user_traffic_used`";
+                $dropTrigger2 = "DROP TRIGGER IF EXISTS `save_user_traffic_reseted`";
+        
+                if ($marzbanConn->query($dropTrigger1) && $marzbanConn->query($dropTrigger2)) {
+                    sendRequest('editMessageText', [
+                        'chat_id' => $chatId,
+                        'message_id' => $messageId,
+                        'text' => $lang['triggers_deactivated']
+                    ]);
+                } else {
+                    sendRequest('sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $lang['error_dropping_triggers']
+                    ]);
+                }
+            }
+        
+            $triggerExists1 = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'save_user_traffic_used'")->num_rows > 0;
+            $triggerExists2 = $marzbanConn->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'save_user_traffic_reseted'")->num_rows > 0;
+        
+            $buttonText = ($triggerExists1 && $triggerExists2) ? $lang['deactivate'] : $lang['activate'];
+        
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['traffic_settings'],
+                'reply_markup' => json_encode([
+                    'inline_keyboard' => [
+                        [
+                            ['text' => $buttonText, 'callback_data' => 'toggle_traffic_triggers']
+                        ],
+                        [
+                            ['text' => $lang['back'], 'callback_data' => 'settings']
+                        ]
+                    ]
+                ])
+            ]);
+            return;
+        }
+        if ($data === 'backup') {
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => $lang['marzhelp_backup'], 'callback_data' => 'marzhelp_backup'],
+                        ['text' => $lang['marzban_backup'], 'callback_data' => 'marzban_backup']
+                    ],
+                    [
+                        ['text' => $lang['back'], 'callback_data' => 'settings']
+                    ]
+                ]
+            ];
+        /*
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => $lang['backup_settings'],
+                'reply_markup' => $keyboard
+            ]);
+            */
+
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $userState['message_id'],
+                'text' => 'This option is not available.'
+            ]);
+        
+            $keyboard = getSettingsMenuKeyboard($userId);
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['settings_menu'],
+                'reply_markup' => json_encode($keyboard)
+            ]);
+
+            return;
+        }
+        if ($data === 'marzhelp_backup') {
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => $lang['get_backup'], 'callback_data' => 'get_marzhelp_backup'],
+                        ['text' => $lang['restore_backup'], 'callback_data' => 'restore_marzhelp_backup']
+                    ],
+                    [
+                        ['text' => $lang['back'], 'callback_data' => 'backup']
+                    ]
+                ]
+            ];
+        
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => $lang['marzhelp_backup_options'],
+                'reply_markup' => $keyboard
+            ]);
+            return;
+        }
+        if ($data === 'marzban_backup') {
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => $lang['get_backup'], 'callback_data' => 'get_marzban_backup'],
+                        ['text' => $lang['restore_backup'], 'callback_data' => 'restore_marzban_backup']
+                    ],
+                    [
+                        ['text' => $lang['back'], 'callback_data' => 'backup']
+                    ]
+                ]
+            ];
+        
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => $lang['marzban_backup_options'],
+                'reply_markup' => $keyboard
+            ]);
+            return;
+        }
+        if ($data === 'get_marzban_backup') {
+            $backupFile = '/var/www/html/marzhelp/backups/marzban.sql';
+            $tables = [];
+            $result = $marzbanConn->query("SHOW TABLES");
+        
+            while ($row = $result->fetch_row()) {
+                $tables[] = $row[0];
+            }
+        
+            $backupContent = "-- MySQL dump generated by PHP script\n";
+            $backupContent .= "-- Host: localhost    Database: marzban\n";
+            $backupContent .= "-- ------------------------------------------------------\n";
+            $backupContent .= "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;\n";
+            $backupContent .= "/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;\n";
+            $backupContent .= "/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;\n";
+            $backupContent .= "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n";
+            $backupContent .= "/*!40103 SET TIME_ZONE='+00:00' */;\n";
+            $backupContent .= "/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;\n";
+            $backupContent .= "/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;\n";
+            $backupContent .= "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n";
+            $backupContent .= "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n\n";
+        
+            foreach ($tables as $table) {
+                $result = $marzbanConn->query("SHOW CREATE TABLE `$table`");
+                $row = $result->fetch_row();
+                $backupContent .= "--\n-- Table structure for table `$table`\n--\n";
+                $backupContent .= "DROP TABLE IF EXISTS `$table`;\n";
+                $backupContent .= $row[1] . ";\n\n";
+        
+                $backupContent .= "--\n-- Dumping data for table `$table`\n--\n";
+                $backupContent .= "LOCK TABLES `$table` WRITE;\n";
+                $backupContent .= "/*!40000 ALTER TABLE `$table` DISABLE KEYS */;\n";
+        
+                $result = $marzbanConn->query("SELECT * FROM `$table`");
+                while ($row = $result->fetch_assoc()) {
+                    $backupContent .= "INSERT INTO `$table` VALUES (";
+                    $values = [];
+                    foreach ($row as $value) {
+                        $values[] = isset($value) ? "'" . $marzbanConn->real_escape_string($value) . "'" : "NULL";
+                    }
+                    $backupContent .= implode(", ", $values) . ");\n";
+                }
+        
+                $backupContent .= "/*!40000 ALTER TABLE `$table` ENABLE KEYS */;\n";
+                $backupContent .= "UNLOCK TABLES;\n\n";
+            }
+        
+            $backupContent .= "/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n";
+            $backupContent .= "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;\n";
+            $backupContent .= "/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;\n";
+            $backupContent .= "/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;\n";
+            $backupContent .= "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;\n";
+            $backupContent .= "/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;\n";
+            $backupContent .= "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;\n";
+            $backupContent .= "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;\n";
+        
+            file_put_contents($backupFile, $backupContent);
+        
+            if (file_exists($backupFile)) {
+                $filePath = realpath($backupFile);
+                $url = $apiURL . "sendDocument";
+
+                $currentTime = date('Y-m-d H:i:s');
+                
+                $postFields = [
+                    'chat_id' => $chatId,
+                    'document' => new CURLFile($filePath),
+                    'parse_mode' => 'Markdown',
+                    'caption' => "DataBase Backup : `marzban` \nTime: `$currentTime`\n JoinUs: @marzhelp"
+                ];
+            
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type:multipart/form-data"]);
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+            
+                $result = curl_exec($ch);
+            
+                if (curl_errno($ch)) {
+                    $errorMsg = curl_error($ch);
+                    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
+                } else {
+                    $response = json_decode($result, true);
+                    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Sending backup result: " . json_encode($response) . "\n", FILE_APPEND);
+                    
+                    sendRequest('deleteMessage', [
+                        'chat_id' => $chatId,
+                        'message_id' => $userState['message_id'],
+                    ]);
+                    $keyboard = getSettingsMenuKeyboard($userId);
+                    sendRequest('sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $lang['settings_menu'],
+                        'reply_markup' => json_encode($keyboard)
+                    ]);
+                }
+            
+                curl_close($ch);
+            } else {
+                file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - File does not exist: $backupFile\n", FILE_APPEND);
+            }
+            
+            return;
+        }
+
+        if ($data === 'get_marzhelp_backup') {
+            $backupFile = '/var/www/html/marzhelp/backups/marzhelp.sql';
+            $tables = [];
+            $result = $botConn->query("SHOW TABLES");
+        
+            while ($row = $result->fetch_row()) {
+                $tables[] = $row[0];
+            }
+        
+            $backupContent = "-- MySQL dump generated by PHP script\n";
+            $backupContent .= "-- Host: localhost    Database: marzhelp\n";
+            $backupContent .= "-- ------------------------------------------------------\n";
+            $backupContent .= "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;\n";
+            $backupContent .= "/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;\n";
+            $backupContent .= "/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;\n";
+            $backupContent .= "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n";
+            $backupContent .= "/*!40103 SET TIME_ZONE='+00:00' */;\n";
+            $backupContent .= "/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;\n";
+            $backupContent .= "/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;\n";
+            $backupContent .= "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n";
+            $backupContent .= "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n\n";
+        
+            foreach ($tables as $table) {
+                $result = $botConn->query("SHOW CREATE TABLE `$table`");
+                $row = $result->fetch_row();
+                $backupContent .= "--\n-- Table structure for table `$table`\n--\n";
+                $backupContent .= "DROP TABLE IF EXISTS `$table`;\n";
+                $backupContent .= $row[1] . ";\n\n";
+        
+                $backupContent .= "--\n-- Dumping data for table `$table`\n--\n";
+                $backupContent .= "LOCK TABLES `$table` WRITE;\n";
+                $backupContent .= "/*!40000 ALTER TABLE `$table` DISABLE KEYS */;\n";
+        
+                $result = $botConn->query("SELECT * FROM `$table`");
+                while ($row = $result->fetch_assoc()) {
+                    $backupContent .= "INSERT INTO `$table` VALUES (";
+                    $values = [];
+                    foreach ($row as $value) {
+                        $values[] = isset($value) ? "'" . $botConn->real_escape_string($value) . "'" : "NULL";
+                    }
+                    $backupContent .= implode(", ", $values) . ");\n";
+                }
+        
+                $backupContent .= "/*!40000 ALTER TABLE `$table` ENABLE KEYS */;\n";
+                $backupContent .= "UNLOCK TABLES;\n\n";
+            }
+        
+            $backupContent .= "/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n";
+            $backupContent .= "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;\n";
+            $backupContent .= "/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;\n";
+            $backupContent .= "/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;\n";
+            $backupContent .= "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;\n";
+            $backupContent .= "/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;\n";
+            $backupContent .= "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;\n";
+            $backupContent .= "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;\n";
+        
+            file_put_contents($backupFile, $backupContent);
+        
+            if (file_exists($backupFile)) {
+                $filePath = realpath($backupFile);
+                $url = $apiURL . "sendDocument";
+
+                $currentTime = date('Y-m-d H:i:s');
+                
+                $postFields = [
+                    'chat_id' => $chatId,
+                    'document' => new CURLFile($filePath),
+                    'parse_mode' => 'Markdown',
+                    'caption' => "DataBase Backup : `marzhelp` \nTime: `$currentTime`\n JoinUs: @marzhelp"
+                ];
+            
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type:multipart/form-data"]);
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+            
+                $result = curl_exec($ch);
+            
+                if (curl_errno($ch)) {
+                    $errorMsg = curl_error($ch);
+                    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
+                } else {
+                    $response = json_decode($result, true);
+                    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Sending backup result: " . json_encode($response) . "\n", FILE_APPEND);
+                    
+                    sendRequest('deleteMessage', [
+                        'chat_id' => $chatId,
+                        'message_id' => $userState['message_id'],
+                    ]);
+                    $keyboard = getSettingsMenuKeyboard($userId);
+                    sendRequest('sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $lang['settings_menu'],
+                        'reply_markup' => json_encode($keyboard)
+                    ]);
+                }
+            
+                curl_close($ch);
+            } else {
+                file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - File does not exist: $backupFile\n", FILE_APPEND);
+            }
+            
+            return;
+        }
+        
+        
+    if ($data === 'update_marzban') {
+
+        $command = 'sudo -H -i /usr/local/bin/marzban update 2>&1';
+
+        exec($command, $output, $return_var);
+        
+        $outputText = implode("\n", $output);
+        
+        file_put_contents('command_log.txt', date('Y-m-d H:i:s') . " - Marzban update output:\n" . $outputText . "\n", FILE_APPEND);
+        
+
+    sendRequest('editMessageText', [
+        'chat_id' => $chatId,
+        'message_id' => $userState['message_id'],
+        'text' => 'This option is not available.' #$lang['marzban_update_success']
+    ]);
+
+    $keyboard = getSettingsMenuKeyboard($userId);
+    sendRequest('sendMessage', [
+        'chat_id' => $chatId,
+        'text' => $lang['settings_menu'],
+        'reply_markup' => json_encode($keyboard)
+    ]);
+}
+    if ($data === 'restart_marzban') {
+
+    $command = 'sudo marzban restart > /dev/null 2>&1 &';
+
+    exec($command, $output, $return_var);
+
+    $outputText = implode("\n", $output);
+
+    file_put_contents('command_log.txt', date('Y-m-d H:i:s') . " - Marzban restart output:\n" . $outputText . "\n", FILE_APPEND);
+
+
+    sendRequest('editMessageText', [
+        'chat_id' => $chatId,
+        'message_id' => $userState['message_id'],
+        'text' => $lang['marzban_restart_success']
+    ]);
+
+    $keyboard = getSettingsMenuKeyboard($userId);
+    sendRequest('sendMessage', [
+        'chat_id' => $chatId,
+        'text' => $lang['settings_menu'],
+        'reply_markup' => json_encode($keyboard)
+    ]);
+}
     
+    
+}
 
     function handleMessage($message) {
-        global $botConn, $vpnConn;
+        global $botConn, $marzbanConn;
     
         $chatId = $message['chat']['id'];
         $text = trim($message['text'] ?? '');
@@ -2609,7 +3139,7 @@ function handleCallbackQuery($callback_query) {
                     $dataLimitBytes = $dataLimit * 1073741824;
     
                     $sql = "UPDATE users SET data_limit = data_limit + $dataLimitBytes WHERE data_limit IS NOT NULL AND admin_id in ($adminId)";
-                    if ($vpnConn->query($sql) === TRUE) {
+                    if ($marzbanConn->query($sql) === TRUE) {
 
                         sendRequest('deleteMessage', [
                             'chat_id' => $chatId,
@@ -2653,7 +3183,7 @@ function handleCallbackQuery($callback_query) {
 
     
                     $sql = "UPDATE users SET data_limit = data_limit - (1073741824 * $dataLimit) WHERE data_limit IS NOT NULL AND admin_id IN ($adminId)";
-                    if ($vpnConn->query($sql) === TRUE) {
+                    if ($marzbanConn->query($sql) === TRUE) {
                     $adminId = $userState['admin_id'];
                     $promptMessageId = $userState['message_id'];
 
@@ -2736,7 +3266,7 @@ function handleCallbackQuery($callback_query) {
                     $promptMessageId = $userState['message_id'];
 
                     $sql = "UPDATE users SET expire = expire + ($secondsToAdd) WHERE expire IS NOT NULL AND admin_id IN ($adminId)";
-                    if ($vpnConn->query($sql) === TRUE) {
+                    if ($marzbanConn->query($sql) === TRUE) {
 
                         sendRequest('deleteMessage', [
                             'chat_id' => $chatId,
@@ -2750,7 +3280,7 @@ function handleCallbackQuery($callback_query) {
                     } else {
                         sendRequest('sendMessage', [
                             'chat_id' => $chatId,
-                            'text' => $lang['operation_failed'] . $vpnConn->error
+                            'text' => $lang['operation_failed'] . $marzbanConn->error
                         ]);
                     }
     
@@ -2784,7 +3314,7 @@ function handleCallbackQuery($callback_query) {
                     $promptMessageId = $userState['message_id'];
     
                     $sql = "UPDATE users SET expire = expire - ($secondsToReduce) WHERE expire IS NOT NULL AND admin_id IN ($adminId)";
-                    if ($vpnConn->query($sql) === TRUE) {
+                    if ($marzbanConn->query($sql) === TRUE) {
 
                         sendRequest('deleteMessage', [
                             'chat_id' => $chatId,
@@ -2802,7 +3332,7 @@ function handleCallbackQuery($callback_query) {
                     } else {
                         sendRequest('sendMessage', [
                             'chat_id' => $chatId,
-                            'text' => $lang['operation_failed'] . $vpnConn->error
+                            'text' => $lang['operation_failed'] . $marzbanConn->error
                         ]);
                     }
     
@@ -2919,7 +3449,7 @@ function handleCallbackQuery($callback_query) {
         if ($userState['state'] === 'set_new_password') {
             $hashedPassword = password_hash($text, PASSWORD_BCRYPT);
             $adminId = $userState['admin_id'];
-            $stmt = $vpnConn->prepare("UPDATE admins SET hashed_password = ? WHERE id = ?");
+            $stmt = $marzbanConn->prepare("UPDATE admins SET hashed_password = ? WHERE id = ?");
             $stmt->bind_param("si", $hashedPassword, $adminId);
             $stmt->execute();
             $stmt->close();
@@ -2950,7 +3480,7 @@ function handleCallbackQuery($callback_query) {
             if (is_numeric($text)) {
                 $telegramId = intval($text);
                 $adminId = $userState['admin_id'];
-                $stmt = $vpnConn->prepare("UPDATE admins SET telegram_id = ? WHERE id = ?");
+                $stmt = $marzbanConn->prepare("UPDATE admins SET telegram_id = ? WHERE id = ?");
                 $stmt->bind_param("ii", $telegramId, $adminId);
                 $stmt->execute();
                 $stmt->close();
@@ -2987,7 +3517,7 @@ function handleCallbackQuery($callback_query) {
         if ($userState['state'] === 'set_new_username') {
             $newUsername = $text;
             $adminId = $userState['admin_id'];
-            $stmt = $vpnConn->prepare("UPDATE admins SET username = ? WHERE id = ?");
+            $stmt = $marzbanConn->prepare("UPDATE admins SET username = ? WHERE id = ?");
             $stmt->bind_param("si", $newUsername, $adminId);
             $stmt->execute();
             $stmt->close();
@@ -3019,7 +3549,7 @@ function handleCallbackQuery($callback_query) {
                 $username = $text;
                 $adminId = $userState['admin_id'];
                 
-                $stmt = $vpnConn->prepare("SELECT id FROM admins WHERE username = ?");
+                $stmt = $marzbanConn->prepare("SELECT id FROM admins WHERE username = ?");
                 $stmt->bind_param("s", $username);
                 $stmt->execute();
                 $result = $stmt->get_result();
@@ -3088,7 +3618,7 @@ function handleCallbackQuery($callback_query) {
                 if (isset($response['result']['message_id'])) {
                     $promptMessageId = $response['result']['message_id'];
                 } else {
-                    $promptMessageId = $messageId;
+                    $promptMessageId = $userState['message_id'];
                 }
                 $stateset = 'waiting_for_username';
                 handleUserState('set', $userId, $stateset);
@@ -3174,6 +3704,33 @@ function handleCallbackQuery($callback_query) {
                 ]);
                 return;
             }
+        }
+        if ($userState['state'] === 'awaiting_sql_upload' && isset($message['document'])) {
+            $file_id = $message['document']['file_id'];
+            $file_path = getFilePath($file_id);
+
+            file_put_contents('/var/www/html/marzhelp/backups/marzhelp.sql', fopen($file_path, 'r'));
+        
+            $command = "mysql -u root -p$botDbPass marzhelp < /var/www/html/marzhelp/backups/marzhelp.sql";
+            exec($command, $output, $return_var);
+            if ($return_var === 0) {
+                sendRequest('sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => $lang['restore_success']
+                ]);
+            } else {
+                sendRequest('sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => $lang['restore_failed']
+                ]);
+            }
+            handleUserState('clear', $userId);
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['main_menu'],
+                'reply_markup' => getMainMenuKeyboard($userId)
+            ]);
+            return;
         }
         if ($text === '/start') {
             $stmt = $botConn->prepare("SELECT lang FROM user_states WHERE user_id = ?");
