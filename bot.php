@@ -2622,14 +2622,11 @@ function handleCallbackQuery($callback_query) {
             ]);
         }
         if ($data === 'settings') {
-            
-            $keyboard = getSettingsMenuKeyboard($userId);
-
             sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
                 'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
-                'reply_markup' => json_encode($keyboard)
+                'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
             ]);
         
             return;
@@ -2641,7 +2638,7 @@ function handleCallbackQuery($callback_query) {
                 'text' => $lang['update_in_progress']
             ]);
         
-            $command = "cd /var/www/html/marzhelp && git reset --hard origin/main && git config --global --add safe.directory /var/www/html/marzhelp && git pull 2>&1";
+            $command = "cd /var/www/html/marzhelp && git reset --hard origin/main && git pull";
             exec($command, $output, $return_var);
         
             if ($return_var === 0) {
@@ -2649,7 +2646,7 @@ function handleCallbackQuery($callback_query) {
                 exec($dbUpdateCommand, $db_output, $db_return_var);
         
         
-                if ($db_return_var === 0) {
+                if (trim($dbOutput) === "") {
 
                     sendRequest('deleteMessage', [
                         'chat_id' => $chatId,
@@ -2657,7 +2654,12 @@ function handleCallbackQuery($callback_query) {
                     ]);
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
-                        'text' => $lang['update_success']
+                        'text' => $lang['update_success'] . " $latestVersion"
+                    ]);
+                    sendRequest('sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+                        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
                     ]);
                 } else {
                     
@@ -2669,6 +2671,11 @@ function handleCallbackQuery($callback_query) {
                         'chat_id' => $chatId,
                         'text' => $lang['db_update_failed'] 
                     ]);
+                    sendRequest('sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+                        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
+                    ]);    
                 }
             } else {
 
@@ -2781,27 +2788,14 @@ function handleCallbackQuery($callback_query) {
                     ]
                 ]
             ];
-        /*
+        
             sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
                 'text' => $lang['backup_settings'],
                 'reply_markup' => $keyboard
             ]);
-            */
-
-            sendRequest('editMessageText', [
-                'chat_id' => $chatId,
-                'message_id' => $userState['message_id'],
-                'text' => 'This option is not available.'
-            ]);
         
-            $keyboard = getSettingsMenuKeyboard($userId);
-            sendRequest('sendMessage', [
-                'chat_id' => $chatId,
-                'text' => $lang['settings_menu'],
-                'reply_markup' => json_encode($keyboard)
-            ]);
 
             return;
         }
@@ -2937,11 +2931,10 @@ function handleCallbackQuery($callback_query) {
                         'chat_id' => $chatId,
                         'message_id' => $userState['message_id'],
                     ]);
-                    $keyboard = getSettingsMenuKeyboard($userId);
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
-                        'text' => $lang['settings_menu'],
-                        'reply_markup' => json_encode($keyboard)
+                        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+                        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
                     ]);
                 }
             
@@ -3043,11 +3036,10 @@ function handleCallbackQuery($callback_query) {
                         'chat_id' => $chatId,
                         'message_id' => $userState['message_id'],
                     ]);
-                    $keyboard = getSettingsMenuKeyboard($userId);
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
-                        'text' => $lang['settings_menu'],
-                        'reply_markup' => json_encode($keyboard)
+                        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+                        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
                     ]);
                 }
             
@@ -3077,11 +3069,10 @@ function handleCallbackQuery($callback_query) {
         'text' => 'This option is not available.' #$lang['marzban_update_success']
     ]);
 
-    $keyboard = getSettingsMenuKeyboard($userId);
     sendRequest('sendMessage', [
         'chat_id' => $chatId,
-        'text' => $lang['settings_menu'],
-        'reply_markup' => json_encode($keyboard)
+        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
     ]);
 }
     if ($data === 'restart_marzban') {
@@ -3101,11 +3092,10 @@ function handleCallbackQuery($callback_query) {
         'text' => $lang['marzban_restart_success']
     ]);
 
-    $keyboard = getSettingsMenuKeyboard($userId);
     sendRequest('sendMessage', [
         'chat_id' => $chatId,
-        'text' => $lang['settings_menu'],
-        'reply_markup' => json_encode($keyboard)
+        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
     ]);
 }
     
