@@ -69,7 +69,8 @@ function checkAndCreateTablesAndColumns($botConn) {
         'admin_id' => "ALTER TABLE `user_states` ADD `admin_id` int DEFAULT NULL;",
         'updated_at' => "ALTER TABLE `user_states` ADD `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;",
         'data' => "ALTER TABLE `user_states` ADD `data` text;",
-        'message_id' => "ALTER TABLE `user_states` ADD `message_id` int DEFAULT NULL;"
+        'message_id' => "ALTER TABLE `user_states` ADD `message_id` int DEFAULT NULL;",
+        'template_index' => "ALTER TABLE `user_states` ADD COLUMN `template_index` INT DEFAULT 0 AFTER `message_id`;" 
     ];
     $hasCriticalError = $hasCriticalError || checkAndAddColumns($botConn, 'user_states', $columnsUserStates);
 
