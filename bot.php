@@ -18,7 +18,7 @@ $latestVersion = 'v0.1.1';
 
 $botConn = new mysqli($botDbHost, $botDbUser, $botDbPass, $botDbName);
 if ($botConn->connect_error) {
-    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Bot DB connection failed: " . $botConn->connect_error . "\n", FILE_APPEND);
+    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Bot DB connection failed: " . $botConn->connect_error . "\n", FILE_APPEND);
     exit;
 }
 $botConn->set_charset("utf8");
@@ -27,7 +27,7 @@ $botConn->set_charset("utf8");
 // $marzbanConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName, $vpnDbPort);
 $marzbanConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName);
 if ($marzbanConn->connect_error) {
-    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - VPN DB connection failed: " . $marzbanConn->connect_error . "\n", FILE_APPEND);
+    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - VPN DB connection failed: " . $marzbanConn->connect_error . "\n", FILE_APPEND);
     exit;
 }
 $marzbanConn->set_charset("utf8");
@@ -50,12 +50,12 @@ function getLang($userId) {
                 }
             }
         } else {
-            file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Error executing statement: " . $stmt->error . "\n", FILE_APPEND);
+            file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Error executing statement: " . $stmt->error . "\n", FILE_APPEND);
         }
         
         $stmt->close();
     } else {
-        file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Error preparing statement: " . $botConn->error . "\n", FILE_APPEND);
+        file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Error preparing statement: " . $botConn->error . "\n", FILE_APPEND);
     }
 
     $languages = include 'languages.php';
@@ -78,7 +78,7 @@ function sendRequest($method, $parameters) {
     $response = curl_exec($ch);
     
     if (curl_errno($ch)) {
-        file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - cURL error: " . curl_error($ch) . "\n", FILE_APPEND);
+        file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - cURL error: " . curl_error($ch) . "\n", FILE_APPEND);
     }
     
     curl_close($ch);
@@ -255,7 +255,8 @@ function getSettingsMenuKeyboard($userId) {
                 ['text' => $lang['restart_marzban'], 'callback_data' => 'restart_marzban']
             ],
             [
-                ['text' => $lang['backup'], 'callback_data' => 'backup']
+                ['text' => $lang['backup'], 'callback_data' => 'backup'],
+                ['text' => $lang['change_template'], 'callback_data' => 'change_template']
             ],
             [
                 ['text' => $lang['back'], 'callback_data' => 'back_to_main']
@@ -529,7 +530,7 @@ function handleUserState($action, $userId, $state = null, $adminId = null) {
         }
 
         if (!$stmt->execute()) {
-            file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - SQL error: " . $stmt->error . "\n", FILE_APPEND);
+            file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - SQL error: " . $stmt->error . "\n", FILE_APPEND);
             $stmt->close();
             return false;
         }
@@ -578,7 +579,7 @@ function handleTemporaryData($operation, $userId, $key = null, $value = null) {
         $stmt = $botConn->prepare("INSERT INTO user_temporaries (user_id, `user_key`, `value`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = ?");
         $stmt->bind_param("isss", $userId, $key, $value, $value);
         if (!$stmt->execute()) {
-            file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - SQL error: " . $stmt->error . "\n", FILE_APPEND);
+            file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - SQL error: " . $stmt->error . "\n", FILE_APPEND);
         }
         $stmt->close();
     } elseif ($operation === 'get') {
@@ -598,6 +599,47 @@ function handleTemporaryData($operation, $userId, $key = null, $value = null) {
         $stmt->execute();
         $stmt->close();
     }
+}
+function getTemplateMenuKeyboard($currentIndex, $templateCount, $userId) {
+
+    $lang = getLang($userId); 
+
+    $buttons = [
+        [
+            ['text' => $lang['prev'], 'callback_data' => 'template_prev'],
+            ['text' => $lang['next'], 'callback_data' => 'template_next']
+        ],
+        [
+            ['text' => $lang['apply_template'], 'callback_data' => 'apply_template']
+        ],
+        [
+            ['text' => $lang['back_to_settings'], 'callback_data' => 'back_to_settings']
+        ]
+    ];
+
+    return [
+        'inline_keyboard' => $buttons
+    ];
+}
+function setUserTemplateIndex($userId, $index) {
+    global $botConn;
+
+    $stmt = $botConn->prepare("INSERT INTO user_states (user_id, template_index) VALUES (?, ?) ON DUPLICATE KEY UPDATE template_index = ?");
+    $stmt->bind_param("iii", $userId, $index, $index);
+    $stmt->execute();
+    $stmt->close();
+}
+function getUserTemplateIndex($userId) {
+    global $botConn;
+
+    $stmt = $botConn->prepare("SELECT template_index FROM user_states WHERE user_id = ?");
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $stmt->bind_result($templateIndex);
+    $stmt->fetch();
+    $stmt->close();
+
+    return $templateIndex !== null ? $templateIndex : 0; 
 }
 
 
@@ -719,7 +761,7 @@ function getAdminInfo($adminId) {
 function getAdminInfoText($adminInfo, $userId) {
     global $botConn;
     $lang = getLang($userId);
-    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Language retrieved: " . json_encode($lang) . "\n", FILE_APPEND);
+    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Language retrieved: " . json_encode($lang) . "\n", FILE_APPEND);
 
     $statusText = ($adminInfo['status'] === 'active') ? $lang['active_status'] : $lang['inactive_status'];
     
@@ -1990,7 +2032,7 @@ function handleCallbackQuery($callback_query) {
     
         $keyboard = array_chunk($keyboard, 2);
         $keyboard[] = [
-            ['text' => $nextStepButton, 'callback_data' => 'confirm_inbounds:' . $adminId],
+            ['text' => $lang['next_step_button'], 'callback_data' => 'confirm_inbounds:' . $adminId],
             ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
         ];
     
@@ -2091,7 +2133,7 @@ function handleCallbackQuery($callback_query) {
     
         $keyboard = array_chunk($keyboard, 2);
         $keyboard[] = [
-            ['text' => $nextStepButton, 'callback_data' => 'confirm_inbounds:' . $adminId],
+            ['text' => $lang['next_step_button'], 'callback_data' => 'confirm_inbounds:' . $adminId],
             ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
         ];
     
@@ -2789,13 +2831,23 @@ function handleCallbackQuery($callback_query) {
                 ]
             ];
         
-            sendRequest('editMessageText', [
+            /*sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
                 'text' => $lang['backup_settings'],
                 'reply_markup' => $keyboard
             ]);
-        
+        */
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $userState['message_id'],
+            'text' => '🥺این بخش درحال حاضر غیرفعال میباشد.'
+        ]);
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+            'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
+        ]);
 
             return;
         }
@@ -2922,10 +2974,10 @@ function handleCallbackQuery($callback_query) {
             
                 if (curl_errno($ch)) {
                     $errorMsg = curl_error($ch);
-                    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
+                    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
                 } else {
                     $response = json_decode($result, true);
-                    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Sending backup result: " . json_encode($response) . "\n", FILE_APPEND);
+                    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Sending backup result: " . json_encode($response) . "\n", FILE_APPEND);
                     
                     sendRequest('deleteMessage', [
                         'chat_id' => $chatId,
@@ -2940,7 +2992,7 @@ function handleCallbackQuery($callback_query) {
             
                 curl_close($ch);
             } else {
-                file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - File does not exist: $backupFile\n", FILE_APPEND);
+                file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - File does not exist: $backupFile\n", FILE_APPEND);
             }
             
             return;
@@ -3027,10 +3079,10 @@ function handleCallbackQuery($callback_query) {
             
                 if (curl_errno($ch)) {
                     $errorMsg = curl_error($ch);
-                    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
+                    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
                 } else {
                     $response = json_decode($result, true);
-                    file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Sending backup result: " . json_encode($response) . "\n", FILE_APPEND);
+                    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Sending backup result: " . json_encode($response) . "\n", FILE_APPEND);
                     
                     sendRequest('deleteMessage', [
                         'chat_id' => $chatId,
@@ -3045,7 +3097,7 @@ function handleCallbackQuery($callback_query) {
             
                 curl_close($ch);
             } else {
-                file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - File does not exist: $backupFile\n", FILE_APPEND);
+                file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - File does not exist: $backupFile\n", FILE_APPEND);
             }
             
             return;
@@ -3060,7 +3112,7 @@ function handleCallbackQuery($callback_query) {
         
         $outputText = implode("\n", $output);
         
-        file_put_contents('command_log.txt', date('Y-m-d H:i:s') . " - Marzban update output:\n" . $outputText . "\n", FILE_APPEND);
+        file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Marzban update output:\n" . $outputText . "\n", FILE_APPEND);
         
 
     sendRequest('editMessageText', [
@@ -3083,7 +3135,7 @@ function handleCallbackQuery($callback_query) {
 
     $outputText = implode("\n", $output);
 
-    file_put_contents('command_log.txt', date('Y-m-d H:i:s') . " - Marzban restart output:\n" . $outputText . "\n", FILE_APPEND);
+    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Marzban restart output:\n" . $outputText . "\n", FILE_APPEND);
 
 
     sendRequest('editMessageText', [
@@ -3098,7 +3150,93 @@ function handleCallbackQuery($callback_query) {
         'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
     ]);
 }
+    if (strpos($data, 'change_template') === 0) {
+
+
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $userState['message_id'],
+            'text' => '🥺این بخش درحال حاضر غیرفعال میباشد.'
+        ]);
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+            'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
+        ]);
     
+    $templates = [
+        [
+            'image' => 'screenshot.jpg',
+            'command' => 'sudo wget -N -P /var/lib/marzban/templates/subscription/ https://raw.githubusercontent.com/x0sina/marzban-sub/main/index1.html'
+        ],
+        [
+            'image' => 'screenshot.jpg',
+            'command' => 'sudo wget -N -P /var/lib/marzban/templates/subscription/ https://raw.githubusercontent.com/x0sina/marzban-sub/main/index2.html'
+        ],
+    ];
+
+    $currentIndex = 0;
+    $templateCount = count($templates);
+
+    setUserTemplateIndex($userId, $currentIndex);
+
+    sendRequest('sendPhoto', [
+        'chat_id' => $chatId,
+        'photo' => $templates[$currentIndex]['image'],
+        'caption' => sprintf($lang['template_caption'], $currentIndex + 1, $templateCount),
+        'reply_markup' => json_encode(getTemplateMenuKeyboard($currentIndex, $templateCount, $userId))  
+    ]);
+    
+
+    return;
+}
+if (strpos($data, 'template_') === 0) {
+    $templates = [
+        [
+            'image' => 'screenshot.jpg',
+            'command' => 'sudo wget -N -P /var/lib/marzban/templates/subscription/ https://raw.githubusercontent.com/x0sina/marzban-sub/main/index1.html'
+        ],
+        [
+            'image' => 'screenshot.jpg',
+            'command' => 'sudo wget -N -P /var/lib/marzban/templates/subscription/ https://raw.githubusercontent.com/x0sina/marzban-sub/main/index2.html'
+        ],
+    ];
+
+    $currentIndex = getUserTemplateIndex($userId);
+    $templateCount = count($templates);
+
+    if ($data === 'template_next') {
+        $currentIndex = ($currentIndex + 1) % $templateCount;
+    } elseif ($data === 'template_prev') {
+        $currentIndex = ($currentIndex - 1 + $templateCount) % $templateCount;
+    } elseif ($data === 'apply_template') {
+        $command = $templates[$currentIndex]['command'];
+        exec($command, $output, $status);
+
+        sendRequest('answerCallbackQuery', [
+            'callback_query_id' => $callbackId,
+            'text' => $status === 0 ? $lang['template_applied'] : $lang['template_error'],
+            'show_alert' => true
+        ]);
+
+        return;
+    }
+
+    setUserTemplateIndex($userId, $currentIndex);
+    sendRequest('editMessageMedia', [
+        'chat_id' => $chatId,
+        'message_id' => $messageId,
+        'media' => [
+            'type' => 'photo',
+            'media' => $templates[$currentIndex]['image'],
+            'caption' => sprintf($lang['template_caption'], $currentIndex + 1, $templateCount)
+        ],
+        'reply_markup' => getTemplateMenuKeyboard($currentIndex, $templateCount, $userId)
+    ]);
+
+    return;
+}
+
     
 }
 
@@ -3114,7 +3252,7 @@ function handleCallbackQuery($callback_query) {
         $userRole = getUserRole($userId);
     
         if ($userRole === 'unauthorized') {
-            file_put_contents('bot_log.txt', date('Y-m-d H:i:s') . " - Unauthorized user: $userId\n", FILE_APPEND);
+            file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Unauthorized user: $userId\n", FILE_APPEND);
             sendRequest('sendMessage', ['chat_id' => $chatId, 'text' => $lang['error_unauthorized']]);
             exit;
         }

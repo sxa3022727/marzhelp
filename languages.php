@@ -167,7 +167,16 @@ return [
         'marzban_update_success' => '✅ مرزبان با موفقیت آپدیت شد',
         'marzban_update_failed' => '❌ آپدیت مرزبان با شکست مواجه شد',
         'marzban_restart_success' => '✅ مرزبان با موفقیت ریستارت شد',
-        'marzban_restart_failed' => '❌ ریستارت مرزبان با شکست مواجه شد',    ],
+        'marzban_restart_failed' => '❌ ریستارت مرزبان با شکست مواجه شد',
+        'change_template' => '🎨 تغییر تمپلیت',
+        'template_applied' => '✅ تمپلیت با موفقیت اعمال شد.',
+        'template_error' => '❌ خطایی در اعمال تمپلیت رخ داد.',
+        'template_caption' => '📄 تمپلیت %d از %d',
+        'prev' => '⬅️ قبلی',
+        'next' => '➡️ بعدی',
+        'apply_template' => '✅ اعمال تمپلیت',
+        'back_to_settings' => '🔙 بازگشت به تنظیمات',
+    ],
     
     'en' => [ // english
         'main_menu' => '🏠 Main Menu',
@@ -338,7 +347,14 @@ return [
         'marzban_update_failed' => '❌ Marzban update failed',
         'marzban_restart_success' => '✅ Marzban restarted successfully',
         'marzban_restart_failed' => '❌ Marzban restart failed',
-        
+        'change_template' => '🎨 Change Template',
+        'template_applied' => '✅ Template applied successfully.',
+        'template_error' => '❌ Failed to apply template.',
+        'template_caption' => '📄 Template %d of %d',
+        'prev' => '⬅️ Previous',
+        'next' => '➡️ Next',
+        'apply_template' => '✅ Apply Template',
+        'back_to_settings' => '🔙 Back to Settings',
         ],
             'ru' => [ // russia
         'main_menu' => '🏠 Главное меню',
@@ -508,5 +524,13 @@ return [
         'marzban_update_failed' => '❌ Ошибка обновления Марзбан',
         'marzban_restart_success' => '✅ Марзбан успешно перезагружен',
         'marzban_restart_failed' => '❌ Ошибка перезагрузки Марзбан',
+        'change_template' => '🎨 Изменить шаблон',
+        'template_applied' => '✅ Шаблон успешно применен.',
+        'template_error' => '❌ Не удалось применить шаблон.',
+        'template_caption' => '📄 Шаблон %d из %d',
+        'prev' => '⬅️ Предыдущий',
+        'next' => '➡️ Следующий',
+        'apply_template' => '✅ Применить шаблон',
+        'back_to_settings' => '🔙 Назад к настройкам',
     ]
 ];
