@@ -14,7 +14,7 @@ if (php_sapi_name() !== 'cli') {
 
 require 'config.php';
 
-$latestVersion = 'v0.1.1';
+$latestVersion = 'v0.2.0';
 
 $botConn = new mysqli($botDbHost, $botDbUser, $botDbPass, $botDbName);
 if ($botConn->connect_error) {
@@ -1531,7 +1531,7 @@ function handleCallbackQuery($callback_query) {
     
             $keyboard = array_chunk($keyboard, 2);
             $keyboard[] = [
-                ['text' => $nextStepButton, 'callback_data' => 'confirm_disable_inbounds'],
+                ['text' => $lang['next_step_button'], 'callback_data' => 'confirm_disable_inbounds'],
                 ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $userState['admin_id']]
             ];
     
