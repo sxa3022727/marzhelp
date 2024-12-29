@@ -14,7 +14,7 @@ if (php_sapi_name() !== 'cli') {
 
 require 'config.php';
 
-$latestVersion = 'v0.2.0';
+$latestVersion = 'v0.2.1';
 
 $botConn = new mysqli($botDbHost, $botDbUser, $botDbPass, $botDbName);
 if ($botConn->connect_error) {
@@ -1873,19 +1873,93 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-   if (strpos($data, 'set_traffic:') === 0) {
+    if (strpos($data, 'set_traffic:') === 0) {
         $adminId = intval(substr($data, strlen('set_traffic:')));
-        
-        handleUserState('set', $userId, 'set_traffic', $adminId);
     
         sendRequest('editMessageText', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
-            'text' => $lang['setTraffic_prompt'],
+            'text' => $lang['select_traffic_action'],
+            'reply_markup' => json_encode([
+                'inline_keyboard' => [
+                    [
+                        ['text' => $lang['custom_subtract_traffic'], 'callback_data' => "custom_subtract_traffic:$adminId"],
+                        ['text' => $lang['custom_add_traffic'], 'callback_data' => "custom_add_traffic:$adminId"]
+                    ],
+                    [
+                        ['text' => '-500 GB', 'callback_data' => "subtract_traffic:$adminId:500"],
+                        ['text' => '+500 GB', 'callback_data' => "add_traffic:$adminId:500"]
+                    ],
+                    [
+                        ['text' => '-1 TB', 'callback_data' => "subtract_traffic:$adminId:1024"],
+                        ['text' => '+1 TB', 'callback_data' => "add_traffic:$adminId:1024"]
+                    ],
+                    [
+                        ['text' => '-5 TB', 'callback_data' => "subtract_traffic:$adminId:5120"],
+                        ['text' => '+5 TB', 'callback_data' => "add_traffic:$adminId:5120"]
+                    ],
+                    [
+                        ['text' => $lang['back'], 'callback_data' => 'select_admin:' . $adminId]
+                    ]
+                ]
+            ])
+        ]);
+        return;
+    }
+    
+    if (strpos($data, 'add_traffic:') === 0 || strpos($data, 'subtract_traffic:') === 0) {
+        list($action, $adminId, $amount) = explode(':', $data);
+        $adminId = intval($adminId);
+        $amount = intval($amount) * 1073741824;
+    
+        if ($action === 'add_traffic') {
+            $stmt = $botConn->prepare("UPDATE admin_settings SET total_traffic = total_traffic + ? WHERE admin_id = ?");
+            $stmt->bind_param("ii", $amount, $adminId);
+        } else {
+            $stmt = $botConn->prepare("UPDATE admin_settings SET total_traffic = total_traffic - ? WHERE admin_id = ?");
+            $stmt->bind_param("ii", $amount, $adminId);
+        }
+        $stmt->execute();
+        $stmt->close();
+    
+        $adminInfo = getAdminInfo($adminId, $userId);
+        $adminInfo['adminId'] = $adminId;
+        $infoText = getAdminInfoText($adminInfo, $userId);
+    
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['traffic_update_success']
+        ]);
+        sendRequest('sendmessage', [
+            'chat_id' => $chatId,
+            'text' => $infoText,
+            'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status']),
+            'parse_mode' => 'Markdown'
+            
+        ]);
+        return;
+    }
+    
+    if (strpos($data, 'custom_add_traffic:') === 0 || strpos($data, 'custom_subtract_traffic:') === 0) {
+        $adminId = intval(substr($data, strpos($data, ':') + 1));
+        $action = (strpos($data, 'custom_add_traffic:') === 0) ? 'custom_add' : 'custom_subtract';
+    
+        handleUserState('set', $userId, $action, $adminId);
+    
+        $promptText = ($action === 'custom_add') 
+            ? sprintf($lang['addTraffic_prompt'], $adminId)
+            : sprintf($lang['subtractTraffic_prompt'], $adminId);
+    
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $promptText,
             'reply_markup' => getBackToAdminManagementKeyboard($adminId, $userId)
         ]);
         return;
     }
+    
     if (strpos($data, 'set_expiry:') === 0) {
         $adminId = intval(substr($data, strlen('set_expiry:')));
         
@@ -2831,23 +2905,13 @@ function handleCallbackQuery($callback_query) {
                 ]
             ];
         
-            /*sendRequest('editMessageText', [
+            sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
                 'text' => $lang['backup_settings'],
                 'reply_markup' => $keyboard
             ]);
-        */
-        sendRequest('editMessageText', [
-            'chat_id' => $chatId,
-            'message_id' => $userState['message_id'],
-            'text' => '🥺این بخش درحال حاضر غیرفعال میباشد.'
-        ]);
-        sendRequest('sendMessage', [
-            'chat_id' => $chatId,
-            'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
-            'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
-        ]);
+    
 
             return;
         }
@@ -2998,110 +3062,84 @@ function handleCallbackQuery($callback_query) {
             return;
         }
 
-        if ($data === 'get_marzhelp_backup') {
-            $backupFile = '/var/www/html/marzhelp/backups/marzhelp.sql';
-            $tables = [];
-            $result = $botConn->query("SHOW TABLES");
+        if ($data === 'get_marzban_backup') {
+            $backupCommand = "./usr/local/bin/marzban_backup.sh";
+            $output = [];
+            $returnVar = null;
         
-            while ($row = $result->fetch_row()) {
-                $tables[] = $row[0];
-            }
+            exec($backupCommand, $output, $returnVar);
         
-            $backupContent = "-- MySQL dump generated by PHP script\n";
-            $backupContent .= "-- Host: localhost    Database: marzhelp\n";
-            $backupContent .= "-- ------------------------------------------------------\n";
-            $backupContent .= "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;\n";
-            $backupContent .= "/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;\n";
-            $backupContent .= "/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;\n";
-            $backupContent .= "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n";
-            $backupContent .= "/*!40103 SET TIME_ZONE='+00:00' */;\n";
-            $backupContent .= "/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;\n";
-            $backupContent .= "/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;\n";
-            $backupContent .= "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n";
-            $backupContent .= "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n\n";
-        
-            foreach ($tables as $table) {
-                $result = $botConn->query("SHOW CREATE TABLE `$table`");
-                $row = $result->fetch_row();
-                $backupContent .= "--\n-- Table structure for table `$table`\n--\n";
-                $backupContent .= "DROP TABLE IF EXISTS `$table`;\n";
-                $backupContent .= $row[1] . ";\n\n";
-        
-                $backupContent .= "--\n-- Dumping data for table `$table`\n--\n";
-                $backupContent .= "LOCK TABLES `$table` WRITE;\n";
-                $backupContent .= "/*!40000 ALTER TABLE `$table` DISABLE KEYS */;\n";
-        
-                $result = $botConn->query("SELECT * FROM `$table`");
-                while ($row = $result->fetch_assoc()) {
-                    $backupContent .= "INSERT INTO `$table` VALUES (";
-                    $values = [];
-                    foreach ($row as $value) {
-                        $values[] = isset($value) ? "'" . $botConn->real_escape_string($value) . "'" : "NULL";
-                    }
-                    $backupContent .= implode(", ", $values) . ");\n";
-                }
-        
-                $backupContent .= "/*!40000 ALTER TABLE `$table` ENABLE KEYS */;\n";
-                $backupContent .= "UNLOCK TABLES;\n\n";
-            }
-        
-            $backupContent .= "/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n";
-            $backupContent .= "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;\n";
-            $backupContent .= "/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;\n";
-            $backupContent .= "/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;\n";
-            $backupContent .= "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;\n";
-            $backupContent .= "/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;\n";
-            $backupContent .= "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;\n";
-            $backupContent .= "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;\n";
-        
-            file_put_contents($backupFile, $backupContent);
-        
-            if (file_exists($backupFile)) {
-                $filePath = realpath($backupFile);
-                $url = $apiURL . "sendDocument";
-
-                $currentTime = date('Y-m-d H:i:s');
-                
-                $postFields = [
+            if ($returnVar !== 0) {
+                sendRequest('sendMessage', [
                     'chat_id' => $chatId,
-                    'document' => new CURLFile($filePath),
-                    'parse_mode' => 'Markdown',
-                    'caption' => "DataBase Backup : `marzhelp` \nTime: `$currentTime`\n JoinUs: @marzhelp"
-                ];
-            
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type:multipart/form-data"]);
-                curl_setopt($ch, CURLOPT_URL, $url);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
-            
-                $result = curl_exec($ch);
-            
-                if (curl_errno($ch)) {
-                    $errorMsg = curl_error($ch);
-                    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
-                } else {
-                    $response = json_decode($result, true);
-                    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Sending backup result: " . json_encode($response) . "\n", FILE_APPEND);
-                    
-                    sendRequest('deleteMessage', [
-                        'chat_id' => $chatId,
-                        'message_id' => $userState['message_id'],
-                    ]);
-                    sendRequest('sendMessage', [
-                        'chat_id' => $chatId,
-                        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
-                        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
-                    ]);
-                }
-            
-                curl_close($ch);
-            } else {
-                file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - File does not exist: $backupFile\n", FILE_APPEND);
+                    'text' => "❌ خطا در اجرای دستور بکاپ. لطفاً وضعیت سرور را بررسی کنید."
+                ]);
+                return;
             }
-            
-            return;
+        
+            $backupFilePath = null;
+            foreach ($output as $line) {
+                if (strpos($line, 'Backup created:') !== false) {
+                    $backupFilePath = trim(str_replace('Backup created:', '', $line));
+                    break;
+                }
+            }
+        
+            if (!$backupFilePath || !file_exists($backupFilePath)) {
+                sendRequest('sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => "❌ فایل بکاپ پیدا نشد. لطفاً بررسی کنید."
+                ]);
+                return;
+            }
+        
+            $filePath = realpath($backupFilePath);
+            $url = $apiURL . "sendDocument";
+            $currentTime = date('Y-m-d H:i:s');
+        
+            $postFields = [
+                'chat_id' => $chatId,
+                'document' => new CURLFile($filePath),
+                'parse_mode' => 'Markdown',
+                'caption' => "📦 **Backup File:**\n🕒 **Time:** `$currentTime`\nJoin us: @marzhelp"
+            ];
+        
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type:multipart/form-data"]);
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+        
+            $result = curl_exec($ch);
+        
+            if (curl_errno($ch)) {
+                $errorMsg = curl_error($ch);
+                file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
+                sendRequest('sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => "❌ خطا در ارسال فایل بکاپ. لطفاً بررسی کنید."
+                ]);
+                curl_close($ch);
+                return;
+            }
+        
+            curl_close($ch);
+        
+            $response = json_decode($result, true);
+            if (isset($response['ok']) && $response['ok'] === true) {
+                sendRequest('sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => "✅ بکاپ با موفقیت ارسال شد."
+                ]);
+            } else {
+                sendRequest('sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => "❌ مشکلی در ارسال فایل بکاپ رخ داده است."
+                ]);
+            }
+                    return;
         }
+        
         
         
     if ($data === 'update_marzban') {
@@ -3487,15 +3525,19 @@ if (strpos($data, 'template_') === 0) {
                     return;
                 }
             }
-            if ($userState['state'] === 'set_traffic') {
+            if ($userState['state'] === 'custom_add' || $userState['state'] === 'custom_subtract') {
                 $traffic = floatval($text);
                 if ($traffic > 0) {
                     $adminId = $userState['admin_id'];
-                    $promptMessageId = $userState['message_id']; 
+                    $promptMessageId = $userState['message_id'];
                     $totalTrafficBytes = $traffic * 1073741824;
             
-                    $stmt = $botConn->prepare("INSERT INTO admin_settings (admin_id, total_traffic) VALUES (?, ?) ON DUPLICATE KEY UPDATE total_traffic = ?");
-                    $stmt->bind_param("iii", $adminId, $totalTrafficBytes, $totalTrafficBytes);
+                    if ($userState['state'] === 'custom_add') {
+                        $stmt = $botConn->prepare("UPDATE admin_settings SET total_traffic = total_traffic + ? WHERE admin_id = ?");
+                    } else {
+                        $stmt = $botConn->prepare("UPDATE admin_settings SET total_traffic = total_traffic - ? WHERE admin_id = ?");
+                    }
+                    $stmt->bind_param("ii", $totalTrafficBytes, $adminId);
                     $stmt->execute();
                     $stmt->close();
             
@@ -3521,7 +3563,6 @@ if (strpos($data, 'template_') === 0) {
                     ]);
             
                     handleUserState('clear', $userId);
-
                     return;
                 } else {
                     sendRequest('sendMessage', [
@@ -3531,6 +3572,7 @@ if (strpos($data, 'template_') === 0) {
                     return;
                 }
             }
+            
             if ($userState['state'] === 'set_expiry') {
                 $days = intval($text);
                 if ($days > 0) {
@@ -3834,7 +3876,7 @@ if (strpos($data, 'template_') === 0) {
                 return;
             }
         }
-        if ($userState['state'] === 'awaiting_sql_upload' && isset($message['document'])) {
+       /* if ($userState['state'] === 'awaiting_sql_upload' && isset($message['document'])) {
             $file_id = $message['document']['file_id'];
             $file_path = getFilePath($file_id);
 
@@ -3860,7 +3902,7 @@ if (strpos($data, 'template_') === 0) {
                 'reply_markup' => getMainMenuKeyboard($userId)
             ]);
             return;
-        }
+        }*/
         if ($text === '/start') {
             $stmt = $botConn->prepare("SELECT lang FROM user_states WHERE user_id = ?");
             $stmt->bind_param("i", $userId);
