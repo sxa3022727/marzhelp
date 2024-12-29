@@ -17,6 +17,11 @@ function checkAndCreateTablesAndColumns($botConn) {
         `expiry_date` date DEFAULT NULL,
         `status` varchar(50) DEFAULT 'active',
         `user_limit` bigint DEFAULT NULL,
+        `hashed_password_before` varchar(255) DEFAULT NULL,
+        `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        `last_expiry_notification` timestamp NULL DEFAULT NULL,
+        `last_traffic_notification` int DEFAULT NULL,
+        `last_traffic_notify` int DEFAULT NULL,
         PRIMARY KEY (`admin_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;";
 
@@ -27,15 +32,16 @@ function checkAndCreateTablesAndColumns($botConn) {
 
     $tableUserStates = "CREATE TABLE IF NOT EXISTS `user_states` (
         `user_id` bigint NOT NULL,
-        `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
-        `lang` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+        `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
+        `lang` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
         `state` varchar(50) DEFAULT NULL,
         `admin_id` int DEFAULT NULL,
         `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         `data` text,
         `message_id` int DEFAULT NULL,
+        `template_index` int DEFAULT 0,
         PRIMARY KEY (`user_id`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;";
 
     if (!$botConn->query($tableUserStates)) {
         echo "Critical error creating `user_states`: " . $botConn->error . "\n";
@@ -47,30 +53,43 @@ function checkAndCreateTablesAndColumns($botConn) {
         `user_key` varchar(50) NOT NULL,
         `value` text,
         PRIMARY KEY (`user_id`, `user_key`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;";
 
     if (!$botConn->query($tableUserTemporaries)) {
         echo "Critical error creating `user_temporaries`: " . $botConn->error . "\n";
         $hasCriticalError = true;
     }
 
+    $tableAdminUsage = "CREATE TABLE IF NOT EXISTS `admin_usage` (
+        `id` bigint NOT NULL AUTO_INCREMENT,
+        `admin_id` int NOT NULL,
+        `used_traffic_gb` decimal(10,2) NOT NULL,
+        `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+
+    if (!$botConn->query($tableAdminUsage)) {
+        echo "Critical error creating `admin_usage`: " . $botConn->error . "\n";
+        $hasCriticalError = true;
+    }
+
     $columnsAdminSettings = [
-        'total_traffic' => "ALTER TABLE `admin_settings` ADD `total_traffic` bigint DEFAULT NULL;",
-        'expiry_date' => "ALTER TABLE `admin_settings` ADD `expiry_date` date DEFAULT NULL;",
-        'status' => "ALTER TABLE `admin_settings` ADD `status` varchar(50) DEFAULT 'active';",
-        'user_limit' => "ALTER TABLE `admin_settings` ADD `user_limit` bigint DEFAULT NULL;"
+        'hashed_password_before' => "ALTER TABLE `admin_settings` ADD `hashed_password_before` varchar(255) DEFAULT NULL;",
+        'last_expiry_notification' => "ALTER TABLE `admin_settings` ADD `last_expiry_notification` timestamp NULL DEFAULT NULL;",
+        'last_traffic_notification' => "ALTER TABLE `admin_settings` ADD `last_traffic_notification` int DEFAULT NULL;",
+        'last_traffic_notify' => "ALTER TABLE `admin_settings` ADD `last_traffic_notify` int DEFAULT NULL;"
     ];
     $hasCriticalError = $hasCriticalError || checkAndAddColumns($botConn, 'admin_settings', $columnsAdminSettings);
 
     $columnsUserStates = [
-        'username' => "ALTER TABLE `user_states` ADD `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL;",
-        'lang' => "ALTER TABLE `user_states` ADD `lang` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL;",
+        'username' => "ALTER TABLE `user_states` ADD `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL;",
+        'lang' => "ALTER TABLE `user_states` ADD `lang` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL;",
         'state' => "ALTER TABLE `user_states` ADD `state` varchar(50) DEFAULT NULL;",
         'admin_id' => "ALTER TABLE `user_states` ADD `admin_id` int DEFAULT NULL;",
         'updated_at' => "ALTER TABLE `user_states` ADD `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;",
         'data' => "ALTER TABLE `user_states` ADD `data` text;",
         'message_id' => "ALTER TABLE `user_states` ADD `message_id` int DEFAULT NULL;",
-        'template_index' => "ALTER TABLE `user_states` ADD COLUMN `template_index` INT DEFAULT 0 AFTER `message_id`;" 
+        'template_index' => "ALTER TABLE `user_states` ADD COLUMN `template_index` INT DEFAULT 0 AFTER `message_id`;"
     ];
     $hasCriticalError = $hasCriticalError || checkAndAddColumns($botConn, 'user_states', $columnsUserStates);
 
@@ -100,13 +119,26 @@ function checkAndAddColumns($botConn, $tableName, $columns) {
     return $hasCriticalError;
 }
 
+function setupCronJob($scriptPath) {
+    $cronJob = "* * * * * /usr/bin/php $scriptPath";
+    
+    $currentCronJobs = shell_exec('crontab -l 2>/dev/null');
+    
+    if (strpos($currentCronJobs, $cronJob) === false) {
+        $newCronJobs = trim($currentCronJobs) . PHP_EOL . $cronJob . PHP_EOL;
+        
+        file_put_contents('/tmp/crontab.txt', $newCronJobs);
+        exec('crontab /tmp/crontab.txt');
+        unlink('/tmp/crontab.txt');
+    }
+}
+
 $hasCriticalError = checkAndCreateTablesAndColumns($botConn);
+
+$scriptPath = "/var/www/html/marzhelp/cron.php";
+setupCronJob($scriptPath);
 
 $botConn->close();
 
-if ($hasCriticalError) {
-    exit(1); 
-} else {
-    exit(0);
-}
+exit($hasCriticalError ? 1 : 0);
 ?>
