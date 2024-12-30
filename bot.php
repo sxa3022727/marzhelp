@@ -1899,12 +1899,40 @@ function handleCallbackQuery($callback_query) {
                         ['text' => '+5 TB', 'callback_data' => "add_traffic:$adminId:5120"]
                     ],
                     [
+                        ['text' => $lang['unlimited_traffic'], 'callback_data' => "set_traffic_unlimited:$adminId"] 
+                    ],
+                    [
                         ['text' => $lang['back'], 'callback_data' => 'select_admin:' . $adminId]
                     ]
                 ]
             ])
         ]);
         return;
+    }
+    if (strpos($data, 'set_traffic_unlimited:') === 0) {
+        $adminId = intval(substr($data, strlen('set_traffic_unlimited:')));
+    
+        $stmt = $botConn->prepare("INSERT INTO admin_settings (admin_id, total_traffic) VALUES (?, NULL) ON DUPLICATE KEY UPDATE total_traffic = NULL");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $stmt->close();
+    
+        $adminInfo = getAdminInfo($adminId, $userId);
+        $adminInfo['adminId'] = $adminId;
+        $infoText = getAdminInfoText($adminInfo, $userId);
+
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['traffic_update_success']
+        ]);
+        sendRequest('sendmessage', [
+            'chat_id' => $chatId,
+            'text' => $infoText,
+            'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status']),
+            'parse_mode' => 'Markdown'
+            
+        ]);
     }
     
     if (strpos($data, 'add_traffic:') === 0 || strpos($data, 'subtract_traffic:') === 0) {
@@ -1913,15 +1941,22 @@ function handleCallbackQuery($callback_query) {
         $amount = intval($amount) * 1073741824;
     
         if ($action === 'add_traffic') {
-            $stmt = $botConn->prepare("UPDATE admin_settings SET total_traffic = total_traffic + ? WHERE admin_id = ?");
-            $stmt->bind_param("ii", $amount, $adminId);
+            $stmt = $botConn->prepare("
+                INSERT INTO admin_settings (admin_id, total_traffic) 
+                VALUES (?, ?) 
+                ON DUPLICATE KEY UPDATE total_traffic = total_traffic + VALUES(total_traffic)
+            ");
         } else {
-            $stmt = $botConn->prepare("UPDATE admin_settings SET total_traffic = total_traffic - ? WHERE admin_id = ?");
-            $stmt->bind_param("ii", $amount, $adminId);
+            $stmt = $botConn->prepare("
+                INSERT INTO admin_settings (admin_id, total_traffic) 
+                VALUES (?, -?) 
+                ON DUPLICATE KEY UPDATE total_traffic = total_traffic + VALUES(total_traffic)
+            ");
         }
+        $stmt->bind_param("ii", $adminId, $amount);
         $stmt->execute();
         $stmt->close();
-    
+        
         $adminInfo = getAdminInfo($adminId, $userId);
         $adminInfo['adminId'] = $adminId;
         $infoText = getAdminInfoText($adminInfo, $userId);
@@ -3533,13 +3568,22 @@ if (strpos($data, 'template_') === 0) {
                     $totalTrafficBytes = $traffic * 1073741824;
             
                     if ($userState['state'] === 'custom_add') {
-                        $stmt = $botConn->prepare("UPDATE admin_settings SET total_traffic = total_traffic + ? WHERE admin_id = ?");
+                        $stmt = $botConn->prepare("
+                            INSERT INTO admin_settings (admin_id, total_traffic) 
+                            VALUES (?, ?) 
+                            ON DUPLICATE KEY UPDATE total_traffic = total_traffic + VALUES(total_traffic)
+                        ");
                     } else {
-                        $stmt = $botConn->prepare("UPDATE admin_settings SET total_traffic = total_traffic - ? WHERE admin_id = ?");
+                        $stmt = $botConn->prepare("
+                            INSERT INTO admin_settings (admin_id, total_traffic) 
+                            VALUES (?, -?) 
+                            ON DUPLICATE KEY UPDATE total_traffic = total_traffic + VALUES(total_traffic)
+                        ");
                     }
-                    $stmt->bind_param("ii", $totalTrafficBytes, $adminId);
+                    $stmt->bind_param("ii", $adminId, $totalTrafficBytes);
                     $stmt->execute();
                     $stmt->close();
+                    
             
                     sendRequest('deleteMessage', [
                         'chat_id' => $chatId,

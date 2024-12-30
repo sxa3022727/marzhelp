@@ -196,7 +196,9 @@ return [
         'custom_subtract_traffic' => 'کاهش حجم دلخواه ➖',
         'addTraffic_prompt' => 'لطفاً مقدار حجمی که می‌خواهید اضافه کنید را وارد کنید (گیگابایت): 🛠️',
         'subtractTraffic_prompt' => 'لطفاً مقدار حجمی که می‌خواهید کم کنید را وارد کنید (گیگابایت): 🔧',
-        'traffic_update_success' => '✅ حجم با موفقیت به‌روزرسانی شد.'
+        'traffic_update_success' => '✅ حجم با موفقیت به‌روزرسانی شد.',
+        'unlimited_traffic' => '🌐 نامحدود'
+
 
     ],
     
@@ -397,7 +399,9 @@ return [
         'custom_subtract_traffic' => 'Subtract Custom Traffic ➖',
         'addTraffic_prompt' => 'Please enter the amount of traffic to add (GB): 🛠️',
         'subtractTraffic_prompt' => 'Please enter the amount of traffic to subtract (GB): 🔧',
-        'traffic_update_success' => '✅ Traffic updated successfully.'
+        'traffic_update_success' => '✅ Traffic updated successfully.',
+        'unlimited_traffic' => '🌐 Unlimited',
+
 
     
         ],
@@ -597,7 +601,9 @@ return [
         'custom_subtract_traffic' => 'Уменьшить пользовательский трафик ➖',
         'addTraffic_prompt' => 'Пожалуйста, введите объем трафика для добавления (ГБ): 🛠️',
         'subtractTraffic_prompt' => 'Пожалуйста, введите объем трафика для вычитания (ГБ): 🔧',
-        'traffic_update_success' => '✅ Трафик успешно обновлен.'
+        'traffic_update_success' => '✅ Трафик успешно обновлен.',
+        'unlimited_traffic' => '🌐 Неограниченный',
+
     
     ]
 ];
