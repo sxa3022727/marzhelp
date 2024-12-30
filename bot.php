@@ -14,7 +14,7 @@ if (php_sapi_name() !== 'cli') {
 
 require 'config.php';
 
-$latestVersion = 'v0.2.1';
+$latestVersion = 'v0.2.2(Temporary)';
 
 $botConn = new mysqli($botDbHost, $botDbUser, $botDbPass, $botDbName);
 if ($botConn->connect_error) {
@@ -1944,18 +1944,19 @@ function handleCallbackQuery($callback_query) {
             $stmt = $botConn->prepare("
                 INSERT INTO admin_settings (admin_id, total_traffic) 
                 VALUES (?, ?) 
-                ON DUPLICATE KEY UPDATE total_traffic = total_traffic + VALUES(total_traffic)
+                ON DUPLICATE KEY UPDATE total_traffic = COALESCE(total_traffic, 0) + VALUES(total_traffic)
             ");
         } else {
             $stmt = $botConn->prepare("
                 INSERT INTO admin_settings (admin_id, total_traffic) 
                 VALUES (?, -?) 
-                ON DUPLICATE KEY UPDATE total_traffic = total_traffic + VALUES(total_traffic)
+                ON DUPLICATE KEY UPDATE total_traffic = COALESCE(total_traffic, 0) + VALUES(total_traffic)
             ");
         }
         $stmt->bind_param("ii", $adminId, $amount);
         $stmt->execute();
         $stmt->close();
+        
         
         $adminInfo = getAdminInfo($adminId, $userId);
         $adminInfo['adminId'] = $adminId;
@@ -3571,18 +3572,19 @@ if (strpos($data, 'template_') === 0) {
                         $stmt = $botConn->prepare("
                             INSERT INTO admin_settings (admin_id, total_traffic) 
                             VALUES (?, ?) 
-                            ON DUPLICATE KEY UPDATE total_traffic = total_traffic + VALUES(total_traffic)
+                            ON DUPLICATE KEY UPDATE total_traffic = COALESCE(total_traffic, 0) + VALUES(total_traffic)
                         ");
                     } else {
                         $stmt = $botConn->prepare("
                             INSERT INTO admin_settings (admin_id, total_traffic) 
                             VALUES (?, -?) 
-                            ON DUPLICATE KEY UPDATE total_traffic = total_traffic + VALUES(total_traffic)
+                            ON DUPLICATE KEY UPDATE total_traffic = COALESCE(total_traffic, 0) + VALUES(total_traffic)
                         ");
                     }
                     $stmt->bind_param("ii", $adminId, $totalTrafficBytes);
                     $stmt->execute();
                     $stmt->close();
+                    
                     
             
                     sendRequest('deleteMessage', [
