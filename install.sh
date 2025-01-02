@@ -63,6 +63,8 @@ if ! dpkg -l | grep -q "^ii  nginx"; then
     apt install mysql-client-core-8.0 -y
     apt install -y nginx php php-cli php-fpm php-curl php-mbstring php-xml php-zip php-soap libssh2-1-dev libssh2-1 git wget unzip curl certbot python3-certbot-nginx
     sleep 15
+    systemctl stop apache2
+    systemctl disable apache2
     systemctl enable nginx
     systemctl start nginx
     apt-get install -y ufw
