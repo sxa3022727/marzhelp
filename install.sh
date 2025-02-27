@@ -19,6 +19,13 @@ ensure_root() {
     fi
 }
 
+# Function to display colored messages
+display_message() {
+    local color="$1"
+    local message="$2"
+    echo -e "\033[${color}m${message}\033[0m"
+}
+
 # Function to retrieve or prompt for the MySQL root password
 get_mysql_root_password() {
     local env_file="/opt/marzban/.env"
@@ -643,8 +650,6 @@ EOL
     echo "Marzhelp has been successfully installed."
 }
 
-
-
 # Function to uninstall Marzhelp and remove related cron jobs, files, and Nginx
 uninstall_marzhelp() {
     display_message "1;34" "=== Uninstalling Marzhelp ==="
@@ -675,7 +680,6 @@ uninstall_marzhelp() {
 
     display_message "1;32" "Marzhelp uninstallation completed."
 }
-
 
 remove_nginx() {
                 echo -e "\033[1;33mRemoving Nginx...\033[0m"
@@ -711,7 +715,6 @@ display_menu() {
     echo -e "\033[1;33m11. \033[1;37mUninstall Marzhelp\033[0m"   
     echo -e "\033[1;33m0. \033[1;37mExit\033[0m"
 }
-
 
 # Main function
 main() {
