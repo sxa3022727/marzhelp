@@ -127,7 +127,7 @@ check_marzhelp_config() {
 
         if [ -z "$botDomain" ]; then
             echo -e "\033[1;31mError: domain missing in marzhelp.txt. Please provide it.\033[0m"
-            read -p "Enter the domain for your server (e.g., example.com): " botDomain
+            read -p "Please enter a new domain for Marzhelp (e.g., example.com). Ensure it's a new domain. " botDomain
             if [ -z "$botDomain" ]; then
                 echo -e "\033[1;31mError: Domain cannot be empty. Exiting.\033[0m"
                 exit 1
@@ -175,7 +175,7 @@ check_marzhelp_config() {
             exit 1
         fi
 
-        read -p "Enter the domain for your server (e.g., example.com): " botDomain
+        read -p "Please enter a new domain for Marzhelp (e.g., example.com). Ensure it's a new domain. " botDomain
         if [ -z "$botDomain" ]; then
             echo -e "\033[1;31mError: Domain cannot be empty. Exiting.\033[0m"
             exit 1
@@ -202,10 +202,6 @@ check_marzhelp_config() {
         echo "allowed_users=$allowedUsers" >> "$marzhelp_file"
     fi
 }
-
-
-
-
 # Function to install and configure Nginx
 install_nginx() {
     echo -e "\033[1;34m=== Checking Nginx Installation ===\033[0m"
@@ -323,7 +319,7 @@ edit_domain_ip() {
         
         # Always prompt for domain and IP, but use existing values as defaults
         echo -e "\033[1;32mCurrent domain:\033[0m $botDomain"
-        read -p "Enter the domain for your server (default: $botDomain): " inputDomain
+        read -p "Please enter a new domain for Marzhelp (default: $botDomain): " inputDomain
         if [ -z "$inputDomain" ]; then
             inputDomain="$botDomain"
         fi
@@ -349,7 +345,7 @@ edit_domain_ip() {
         echo -e "\033[1;31mmarzhelp.txt not found, please provide the information.\033[0m"
         
         # Prompt for domain with no default value
-        read -p "Enter the domain for your server (e.g., example.com): " inputDomain
+        read -p "Please enter a new domain for Marzhelp (e.g., example.com). Ensure it's a new domain. " inputDomain
         if [ -z "$inputDomain" ]; then
             echo -e "\033[1;31mError: Domain cannot be empty. Exiting.\033[0m"
             exit 1
