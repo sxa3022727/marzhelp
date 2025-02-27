@@ -539,41 +539,32 @@ install_php_packages() {
 }
 install_marzhelp() {
 
-# Check if mysql-client is installed
-if ! command -v mysql &> /dev/null; then
-    echo "MySQL client not found. Installing mysql-client..."
-    sudo apt update && sudo apt install mysql-client -y
-fi
+    # Check if mysql-client is installed
+    if ! command -v mysql &> /dev/null; then
+        echo "MySQL client not found. Installing mysql-client..."
+        sudo apt update && sudo apt install mysql-client -y
+    fi
 
-local config_file="/root/marzhelp.txt"
+    local config_file="/root/marzhelp.txt"
 
-# Read values from the config file
-botToken=$(grep "^bot-api=" "$config_file" | cut -d'=' -f2)
-adminID=$(grep "^admin-id=" "$config_file" | cut -d'=' -f2)
-botDomain=$(grep "^domain=" "$config_file" | cut -d'=' -f2)
-serverIP=$(grep "^ip=" "$config_file" | cut -d'=' -f2)
-MYSQL_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" "$config_file" | cut -d'=' -f2)
-allowedUsers=$(grep "^allowed_users=" "$config_file" | cut -d'=' -f2)
+    # Read values from the config file
+    botToken=$(grep "^bot-api=" "$config_file" | cut -d'=' -f2)
+    adminID=$(grep "^admin-id=" "$config_file" | cut -d'=' -f2)
+    botDomain=$(grep "^domain=" "$config_file" | cut -d'=' -f2)
+    serverIP=$(grep "^ip=" "$config_file" | cut -d'=' -f2)
+    MYSQL_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" "$config_file" | cut -d'=' -f2)
+    allowedUsers=$(grep "^allowed_users=" "$config_file" | cut -d'=' -f2)
 
-# Debug output to check if values are read correctly
-echo "botToken: $botToken"
-echo "adminID: $adminID"
-echo "botDomain: $botDomain"
-echo "serverIP: $serverIP"
-echo "MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD"
-echo "allowedUsers: $allowedUsers"
+    # Ensure all required values are set
+    if [ -z "$MYSQL_ROOT_PASSWORD" ] || [ -z "$botToken" ] || [ -z "$allowedUsers" ] || [ -z "$botDomain" ] || [ -z "$serverIP" ] || [ -z "$adminID" ]; then
+        echo "Error: Required values (MYSQL_ROOT_PASSWORD, botToken, allowedUsers, botDomain, serverIP, or adminID) are not set. Exiting."
+        exit 1
+    fi
 
-# Ensure all required values are set
-if [ -z "$MYSQL_ROOT_PASSWORD" ] || [ -z "$botToken" ] || [ -z "$allowedUsers" ] || [ -z "$botDomain" ] || [ -z "$serverIP" ] || [ -z "$adminID" ]; then
-    echo "Error: Required values (MYSQL_ROOT_PASSWORD, botToken, allowedUsers, botDomain, serverIP, or adminID) are not set. Exiting."
-    exit 1
-fi
+    vpnDbName="marzban"
 
-vpnDbName="marzban"
-
-# Create database if it doesn't exist
-mysql -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS marzhelp;"
-
+    # Create database if it doesn't exist
+    mysql -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS marzhelp;"
 
     # Create the user_deletions table in the Marzban database
     mysql -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" "$vpnDbName" <<EOF
@@ -594,9 +585,22 @@ EOF
     echo "Cloning Marzhelp repository from GitHub..."
     git clone https://github.com/ppouria/marzhelp.git /var/www/html/marzhelp
 
-    # Set correct permissions for the Marzhelp files
-    chown -R www-data:www-data /var/www/html/marzhelp/
-    chmod -R 755 /var/www/html/marzhelp/
+    # Define commands and permissions to apply
+    commands=(
+        "sudo chown -R www-data:www-data /var/www/html/marzhelp/"
+        "sudo chmod -R 755 /var/www/html/marzhelp/"
+        "sudo chown www-data:www-data /usr/local/bin/marzban"
+        "sudo chmod +x /usr/local/bin/marzban"
+    )
+
+    # Loop over each command and execute
+    for cmd in "${commands[@]}"; do
+        echo "Executing: $cmd"
+        eval "$cmd"
+    done
+
+    # Add www-data to sudoers for Marzhelp commands
+    sudo bash -c "echo -e '\n## The lines below are related to Marzhelp\nwww-data ALL=(ALL) NOPASSWD: /usr/local/bin/marzban' >> /etc/sudoers.d/marzhelp"
 
     # Write the config.php file with bot token and database credentials
     cat <<EOL > /var/www/html/marzhelp/config.php
@@ -634,12 +638,43 @@ EOL
     # Restart Nginx to apply changes
     systemctl restart nginx
 
-
     # Display successful message
     echo "Webhook set to https://$botDomain:88/marzhelp/webhook.php"
     echo "Marzhelp has been successfully installed."
 }
 
+
+
+# Function to uninstall Marzhelp and remove related cron jobs, files, and Nginx
+uninstall_marzhelp() {
+    display_message "1;34" "=== Uninstalling Marzhelp ==="
+
+    display_message "1;33" "Removing Cron jobs related to Marzhelp..."
+
+    # Find and remove cron jobs containing /var/www/html/marzhelp/
+    crontab -l | grep "/var/www/html/marzhelp/" | while read -r cron_job; do
+        # Remove cron job that matches
+        (crontab -l | grep -v "$cron_job") | crontab -
+        display_message "1;32" "Removed Cron job: $cron_job"
+    done
+
+    display_message "1;33" "Removing Marzhelp directory from /var/www/html/..."
+    if [ -d "/var/www/html/marzhelp" ]; then
+        rm -rf /var/www/html/marzhelp
+        display_message "1;32" "Marzhelp directory removed successfully."
+    else
+        display_message "1;31" "Error: Marzhelp directory not found."
+    fi
+
+    display_message "1;33" "Removing Nginx..."
+    if sudo apt remove --purge -y nginx nginx-common; then
+        display_message "1;32" "Nginx removed successfully."
+    else
+        display_message "1;31" "Error: Failed to remove Nginx."
+    fi
+
+    display_message "1;32" "Marzhelp uninstallation completed."
+}
 
 
 remove_nginx() {
@@ -654,7 +689,7 @@ remove_nginx() {
 # Function to display the menu
 display_menu() {
     clear
-    server_ip=$()  
+    server_ip=$(curl -s http://checkip.amazonaws.com)  
     uptime_info=$(uptime -p)  
     github_link="https://github.com/ppouria/marzhelp"  
 
@@ -662,7 +697,6 @@ display_menu() {
     echo -e "\033[1;32mServer IP: \033[1;37m$server_ip\033[0m"  
     echo -e "\033[1;32mUptime: \033[1;37m$uptime_info\033[0m"  
     echo -e "\033[1;32mGitHub Project: \033[1;37m$github_link\033[0m"  
-
 
     echo -e "\033[1;33m1. \033[1;37mInstall Nginx\033[0m"
     echo -e "\033[1;33m2. \033[1;37mConfigure Nginx with SSL\033[0m"
@@ -674,61 +708,35 @@ display_menu() {
     echo -e "\033[1;33m8. \033[1;37mManage nginx\033[0m"
     echo -e "\033[1;33m9. \033[1;37mManage UFW\033[0m"
     echo -e "\033[1;33m10. \033[1;37mStart full setup\033[0m"
+    echo -e "\033[1;33m11. \033[1;37mUninstall Marzhelp\033[0m"   
     echo -e "\033[1;33m0. \033[1;37mExit\033[0m"
 }
 
+
 # Main function
 main() {
-
-    
+    ensure_root
     while true; do
         display_menu
         read -p "Select an option: " choice
         case $choice in
-            1) install_nginx
-            read -p "Press Enter to continue..."
-             ;;
-            2) configure_nginx_ssl
-            read -p "Press Enter to continue..."
-             ;;
-            3) edit_domain_ip
-            read -p "Press Enter to continue..."
-             ;;
-             4) configure_telegram_bot
-            
-             ;;
-            5) install_php_packages
-            read -p "Press Enter to continue..."
-             ;;
-            6) install_marzhelp
-             read -p "Press Enter to continue..."
-             ;;
-             
-             7) remove_nginx
-             read -p "Press Enter to continue..."
-             ;;
-             
-             8) curl -Ls https://github.com/Mmdd93/v2ray-assistance/raw/refs/heads/main/nginx.sh -o nginx.sh
-		          sudo bash nginx.sh ;;
-   
-             9) curl -Ls https://raw.githubusercontent.com/Mmdd93/v2ray-assistance/main/ufw.sh -o ufw.sh
-		          sudo bash ufw.sh ;;
-			10) install_nginx
-				install_php_packages
-				configure_nginx_ssl
-				install_marzhelp
-            read -p "Press Enter to continue..."
-             ;;	  
-            0)
-                echo "Exiting..."
-                exit 0
-                ;;
-            *)
-                echo "Invalid option. Please try again."
-                ;;
+            1) install_nginx ;;
+            2) configure_nginx_ssl ;;
+            3) edit_domain_ip ;;
+            4) configure_telegram_bot ;;
+            5) install_php_packages ;;
+            6) install_marzhelp ;;
+            7) remove_nginx ;;
+            8) curl -Ls https://github.com/Mmdd93/v2ray-assistance/raw/refs/heads/main/nginx.sh -o nginx.sh; sudo bash nginx.sh ;;
+            9) curl -Ls https://raw.githubusercontent.com/Mmdd93/v2ray-assistance/main/ufw.sh -o ufw.sh; sudo bash ufw.sh ;;
+            10) install_nginx; install_php_packages; configure_nginx_ssl; install_marzhelp ;;
+            11) uninstall_marzhelp ;;   # New case for uninstalling Marzhelp
+            0) echo "Exiting..."; exit 0 ;;
+            *) echo "Invalid option. Please try again." ;;
         esac
     done
 }
+
 ensure_root
 read_env_variable
 check_marzhelp_config
