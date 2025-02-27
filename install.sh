@@ -533,7 +533,7 @@ install_php_packages() {
             echo "$package is already installed."
         else
             echo "Installing $package..."
-            apt-get install -y "$package"
+            apt-get install --no-install-recommends -y "$package"
         fi
     done
 }
@@ -603,6 +603,7 @@ EOF
 <?php
 \$botToken = '$botToken';
 \$apiURL = "https://api.telegram.org/bot\$botToken/";
+\$botdomain = '$botDomain';
 
 \$allowedUsers = [$allowedUsers];
 
@@ -652,8 +653,17 @@ remove_nginx() {
 
 # Function to display the menu
 display_menu() {
-clear
+    clear
+    server_ip=$()  
+    uptime_info=$(uptime -p)  
+    github_link="https://github.com/ppouria/marzhelp"  
+
     echo -e "\033[1;36m=======MarzHelp=======\033[0m"
+    echo -e "\033[1;32mServer IP: \033[1;37m$server_ip\033[0m"  
+    echo -e "\033[1;32mUptime: \033[1;37m$uptime_info\033[0m"  
+    echo -e "\033[1;32mGitHub Project: \033[1;37m$github_link\033[0m"  
+
+
     echo -e "\033[1;33m1. \033[1;37mInstall Nginx\033[0m"
     echo -e "\033[1;33m2. \033[1;37mConfigure Nginx with SSL\033[0m"
     echo -e "\033[1;33m3. \033[1;37mEdit bot domain\033[0m"
@@ -663,9 +673,10 @@ clear
     echo -e "\033[1;33m7. \033[1;37mRemove nginx\033[0m"
     echo -e "\033[1;33m8. \033[1;37mManage nginx\033[0m"
     echo -e "\033[1;33m9. \033[1;37mManage UFW\033[0m"
-	echo -e "\033[1;33m10. \033[1;37mStart full setup\033[0m"
+    echo -e "\033[1;33m10. \033[1;37mStart full setup\033[0m"
     echo -e "\033[1;33m0. \033[1;37mExit\033[0m"
 }
+
 # Main function
 main() {
 
