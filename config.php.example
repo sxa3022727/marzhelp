@@ -1,6 +1,7 @@
 <?php
 $botToken = '';
 $apiURL = "https://api.telegram.org/bot$botToken/";
+$botdomain = '';
 
 $allowedUsers = [1088532278, 987654321];
 
