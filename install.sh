@@ -594,6 +594,8 @@ EOF
         "sudo chmod -R 755 /var/www/html/marzhelp/"
         "sudo chown www-data:www-data /usr/local/bin/marzban"
         "sudo chmod +x /usr/local/bin/marzban"
+        "sudo chmod +x /usr/bin/crontab"
+        "sudo chmod +x /usr/bin/wget"
     )
 
     # Loop over each command and execute
@@ -603,7 +605,15 @@ EOF
     done
 
     # Add www-data to sudoers for Marzhelp commands
-    sudo bash -c "echo -e '\n## The lines below are related to Marzhelp\nwww-data ALL=(ALL) NOPASSWD: /usr/local/bin/marzban' >> /etc/sudoers.d/marzhelp"
+    permissions=(
+    "www-data ALL=(ALL) NOPASSWD: /usr/local/bin/marzban"
+    "www-data ALL=(ALL) NOPASSWD: /usr/bin/crontab"
+    "www-data ALL=(ALL) NOPASSWD: /usr/bin/wget"
+        )
+
+    for prm in "${commands[@]}"; do
+    sudo bash -c "grep -qxF '$prm' /etc/sudoers.d/marzhelp || echo '$prm' >> /etc/sudoers.d/marzhelp"
+    done
 
     # Write the config.php file with bot token and database credentials
     cat <<EOL > /var/www/html/marzhelp/config.php
