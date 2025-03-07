@@ -271,34 +271,41 @@ install_nginx() {
 
 # Function to handle conflicts with Apache and ensure Nginx runs alone on port 80
 handle_apache_conflicts() {
+    echo -e "\033[1;34mChecking for Apache conflicts...\033[0m"
+
     if systemctl is-active --quiet apache2; then
         echo -e "\033[1;31mApache is running. Stopping Apache...\033[0m"
         
-        # Stop Apache service
         systemctl stop apache2
-        systemctl disable apache2
-
-        # Check if Apache is still occupying port 80
-        if lsof -i :80 | grep -q 'apache2'; then
-            echo -e "\033[1;31mApache is still occupying port 80. Killing Apache processes...\033[0m"
-            # Kill Apache processes holding port 80
-            kill -9 $(lsof -t -i :80)
-        else
-            echo -e "\033[1;32mApache successfully stopped and port 80 is now free.\033[0m"
+        
+        if systemctl is-active --quiet apache2; then
+            echo -e "\033[1;31mApache did not stop correctly. Forcing shutdown...\033[0m"
+            pkill -9 apache2  
+            sleep 2  
         fi
+
+        systemctl disable apache2
     else
-        echo -e "\033[1;32mApache is not running or installed.\033[0m"
+        echo -e "\033[1;32mApache is not running.\033[0m"
     fi
 
-    # Ensure Nginx is using port 80
-    if ! lsof -i :80 | grep -q 'nginx'; then
-        echo -e "\033[1;34mNginx is not using port 80. Starting Nginx...\033[0m"
+    if lsof -i :80 | grep -q 'apache2'; then
+        echo -e "\033[1;31mPort 80 is still in use by Apache. Killing processes...\033[0m"
+        pkill -9 apache2
+        sleep 2
+    else
+        echo -e "\033[1;32mPort 80 is free.\033[0m"
+    fi
+
+    if ! systemctl is-active --quiet nginx; then
+        echo -e "\033[1;34mNginx is not running. Starting Nginx...\033[0m"
         systemctl start nginx
         systemctl enable nginx
     else
-        echo -e "\033[1;32mNginx is already using port 80.\033[0m"
+        echo -e "\033[1;32mNginx is already running.\033[0m"
     fi
 }
+
 
 edit_domain_ip() {
     # Check if marzhelp.txt exists and read from it
