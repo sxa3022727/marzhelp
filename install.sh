@@ -611,7 +611,7 @@ EOF
     "www-data ALL=(ALL) NOPASSWD: /usr/bin/wget"
         )
 
-    for prm in "${commands[@]}"; do
+    for prm in "${permissions[@]}"; do
     sudo bash -c "grep -qxF '$prm' /etc/sudoers.d/marzhelp || echo '$prm' >> /etc/sudoers.d/marzhelp"
     done
 
