@@ -207,7 +207,7 @@ install_nginx() {
     echo -e "\033[1;34m=== Checking Nginx Installation ===\033[0m"
     
     handle_apache_conflicts
-    
+
     if ! dpkg -l | grep -q "^ii  nginx"; then
         echo -e "\033[1;33mNginx is not installed. Proceeding with installation...\033[0m"
         
@@ -298,15 +298,8 @@ handle_apache_conflicts() {
     else
         echo -e "\033[1;32mPort 80 is free.\033[0m"
     fi
-
-    if ! systemctl is-active --quiet nginx; then
-        echo -e "\033[1;34mNginx is not running. Starting Nginx...\033[0m"
-        systemctl start nginx
-        systemctl enable nginx
-    else
-        echo -e "\033[1;32mNginx is already running.\033[0m"
-    fi
 }
+
 
 
 edit_domain_ip() {
