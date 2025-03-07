@@ -377,6 +377,9 @@ edit_domain_ip() {
 }
 
 configure_nginx_ssl() {
+
+        handle_apache_conflicts
+
     # Check if SSL certificate already exists
     if [ -f "/etc/letsencrypt/live/$botDomain/fullchain.pem" ]; then
         # If the certificate exists, ask the user whether they want to renew it
