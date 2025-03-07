@@ -206,6 +206,8 @@ check_marzhelp_config() {
 install_nginx() {
     echo -e "\033[1;34m=== Checking Nginx Installation ===\033[0m"
     
+    handle_apache_conflicts
+    
     if ! dpkg -l | grep -q "^ii  nginx"; then
         echo -e "\033[1;33mNginx is not installed. Proceeding with installation...\033[0m"
         
