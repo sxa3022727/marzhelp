@@ -197,8 +197,11 @@ return [
         'addTraffic_prompt' => 'لطفاً مقدار حجمی که می‌خواهید اضافه کنید را وارد کنید (گیگابایت): 🛠️',
         'subtractTraffic_prompt' => 'لطفاً مقدار حجمی که می‌خواهید کم کنید را وارد کنید (گیگابایت): 🔧',
         'traffic_update_success' => '✅ حجم با موفقیت به‌روزرسانی شد.',
-        'unlimited_traffic' => '🌐 نامحدود'
-
+        'unlimited_traffic' => '🌐 نامحدود',
+        'panel_expired_notify' => "پنل %s (آیدی: %d) منقضی شده است.",
+        'traffic_exhausted_notify' => "حجم پنل %s (آیدی: %d) به اتمام رسیده است.",
+        'change_password_temp' => 'تغییر موقت پسورد',
+        'restore_password' => 'بازیابی پسورد',
 
     ],
     
@@ -401,8 +404,10 @@ return [
         'subtractTraffic_prompt' => 'Please enter the amount of traffic to subtract (GB): 🔧',
         'traffic_update_success' => '✅ Traffic updated successfully.',
         'unlimited_traffic' => '🌐 Unlimited',
-
-
+        'panel_expired_notify' => "Panel %s (ID: %d) has expired.",
+        'traffic_exhausted_notify' => "Panel %s (ID: %d) has reached its capacity.",
+        'change_password_temp' => 'Change Password Temporarily',
+        'restore_password' => 'Restore Password',
     
         ],
             'ru' => [ // russia
@@ -603,7 +608,10 @@ return [
         'subtractTraffic_prompt' => 'Пожалуйста, введите объем трафика для вычитания (ГБ): 🔧',
         'traffic_update_success' => '✅ Трафик успешно обновлен.',
         'unlimited_traffic' => '🌐 Неограниченный',
-
+        'panel_expired_notify' => "Panel %s (ID: %d) has expired.",
+        'traffic_exhausted_notify' => "Panel %s (ID: %d) has reached its capacity.",
+        'change_password_temp' => 'Change Password Temporarily',
+        'restore_password' => 'Restore Password',
     
     ]
 ];
