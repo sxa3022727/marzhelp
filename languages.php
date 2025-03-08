@@ -202,7 +202,12 @@ return [
         'traffic_exhausted_notify' => "حجم پنل %s (آیدی: %d) به اتمام رسیده است.",
         'change_password_temp' => 'تغییر موقت پسورد',
         'restore_password' => 'بازیابی پسورد',
-
+        'calculate_volume' => 'نحوه محاسبه حجم',
+        'used_traffic_button' => 'حجم مصرف شده',
+        'created_traffic_button' => 'حجم ساخته شده',
+        'password_already_changed' => 'پسورد قبلاً تغییر کرده است و امکان تغییر دوباره وجود ندارد.',
+        'traffic_exhausted_notify' => 'Traffic for panel %s (ID: %d) has been exhausted.',
+        'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.'
     ],
     
     'en' => [ // english
@@ -408,7 +413,12 @@ return [
         'traffic_exhausted_notify' => "Panel %s (ID: %d) has reached its capacity.",
         'change_password_temp' => 'Change Password Temporarily',
         'restore_password' => 'Restore Password',
-    
+        'calculate_volume' => 'How to calculate volume',
+        'used_traffic_button' => 'Used Traffic',
+        'created_traffic_button' => 'Created Traffic',
+        'password_already_changed' => 'The password has already been changed and cannot be changed again.',
+        'traffic_exhausted_notify' => 'Traffic for panel %s (ID: %d) has been exhausted.',
+        'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.'
         ],
             'ru' => [ // russia
         'main_menu' => '🏠 Главное меню',
@@ -612,6 +622,11 @@ return [
         'traffic_exhausted_notify' => "Panel %s (ID: %d) has reached its capacity.",
         'change_password_temp' => 'Change Password Temporarily',
         'restore_password' => 'Restore Password',
-    
+        'calculate_volume' => 'How to calculate volume',
+        'used_traffic_button' => 'Used Traffic',
+        'created_traffic_button' => 'Created Traffic',
+        'password_already_changed' => 'The password has already been changed and cannot be changed again.',
+        'traffic_exhausted_notify' => 'Traffic for panel %s (ID: %d) has been exhausted.',
+        'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.'
     ]
 ];
