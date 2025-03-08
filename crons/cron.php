@@ -405,124 +405,175 @@ class PanelManager {
         $this->dbMarzban->query("DROP TRIGGER IF EXISTS `$triggerName`");
     }
 
-    public function manageTrigger($adminId, $isOverLimit) {
-        $stmt = $this->dbBot->prepare("SELECT last_trigger_notification FROM admin_settings WHERE admin_id = ?");
-        $stmt->bind_param("i", $adminId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $lastNotification = $result->fetch_assoc()['last_trigger_notification'];
-        $stmt->close();
+    private function manageTrigger($adminId, $isOverLimit, $triggerName, $actionType) {
+        $existingTriggerQuery = $this->dbMarzban->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '$triggerName'");
+        $existingAdminIds = [];
     
-        if ($isOverLimit) {
-            $existingAdminIds = $this->getExistingAdminIds(); 
-            if (!in_array($adminId, $existingAdminIds)) {
-                $existingAdminIds[] = $adminId;
-    
-                if ($lastNotification === null || strtotime($lastNotification) < strtotime('-1 hour')) {
-                    $stmt = $this->dbMarzban->prepare("SELECT telegram_id, username FROM admins WHERE id = ?");
-                    $stmt->bind_param("i", $adminId);
-                    $stmt->execute();
-                    $result = $stmt->get_result();
-                    if ($result->num_rows > 0) {
-                        $admin = $result->fetch_assoc();
-                        $telegramId = $admin['telegram_id'];
-                        $username = $admin['username'];
-    
-                        $lang = $this->getLang($telegramId ?? reset($this->allowedUsers));
-                        $message = sprintf($lang['traffic_exhausted'], $username);
-    
-                        if (!empty($telegramId)) {
-                            $this->notification->sendMessage($telegramId, $message);
-                        }
-                        foreach ($this->allowedUsers as $ownerId) {
-                            $this->notification->sendMessage($ownerId, $message);
-                        }
-                    }
-                    $stmt->close();
-    
-                    $stmt = $this->dbBot->prepare("UPDATE admin_settings SET last_trigger_notification = NOW() WHERE admin_id = ?");
-                    $stmt->bind_param("i", $adminId);
-                    $stmt->execute();
-                    $stmt->close();
+        if ($existingTriggerQuery && $existingTriggerQuery->num_rows > 0) {
+            $triggerResult = $this->dbMarzban->query("SHOW CREATE TRIGGER `$triggerName`");
+            if ($triggerResult && $triggerResult->num_rows > 0) {
+                $triggerRow = $triggerResult->fetch_assoc();
+                $triggerBody = $triggerRow['SQL Original Statement'];
+                if (preg_match("/IN\s*\((.*?)\)/", $triggerBody, $matches)) {
+                    $existingAdminIdsStr = $matches[1];
+                    $existingAdminIdsStr = str_replace(' ', '', $existingAdminIdsStr);
+                    $existingAdminIds = explode(',', $existingAdminIdsStr);
                 }
             }
+        }
+    
+        if ($isOverLimit) {
+            if (!in_array($adminId, $existingAdminIds)) {
+                $existingAdminIds[] = $adminId;
+            }
+        } else {
+            $existingAdminIds = array_diff($existingAdminIds, [$adminId]);
+        }
+    
+        if (empty($existingAdminIds)) {
+            $this->dbMarzban->query("DROP TRIGGER IF EXISTS `$triggerName`");
+        } else {
+            $adminIdsStr = implode(', ', $existingAdminIds);
+            $triggerBody = "
+            CREATE TRIGGER `$triggerName` BEFORE $actionType ON `users`
+            FOR EACH ROW
+            BEGIN
+                IF NEW.admin_id IN ($adminIdsStr) THEN
+                    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Operation not allowed for this admin ID.';
+                END IF;
+            END;
+            ";
+    
+            $this->dbMarzban->query("DROP TRIGGER IF EXISTS `$triggerName`");
+            $this->dbMarzban->query($triggerBody);
         }
     }
 
     private function manageCreatedTrafficTrigger($adminId, $insertTriggerName = 'cron_prevent_user_creation_traffic', $updateTriggerName = 'cron_prevent_user_update_traffic') {
-        $stmtSettings = $this->dbBot->prepare("SELECT total_traffic, calculate_volume FROM admin_settings WHERE admin_id = ?");
+        $stmtSettings = $this->dbBot->prepare("SELECT calculate_volume, total_traffic FROM admin_settings WHERE admin_id = ?");
         $stmtSettings->bind_param("i", $adminId);
         $stmtSettings->execute();
         $settingsResult = $stmtSettings->get_result();
         $settings = $settingsResult->fetch_assoc();
         $stmtSettings->close();
-
-        if (!$settings) {
-            return;
-        }
-
+    
+        if (!$settings) return;
+    
         $calculateVolume = $settings['calculate_volume'] ?? 'used_traffic';
-
-        if ($calculateVolume === 'used_traffic') {
-            $this->dropTriggerIfExists($insertTriggerName);
-            $this->dropTriggerIfExists($updateTriggerName);
-            return;
-        }
-
-        if ($settings['total_traffic'] === null) {
-            return;
-        }
-
         $totalTrafficBytes = $settings['total_traffic'];
-
-        $stmtTraffic = $this->dbMarzban->prepare("
-            SELECT (
-                IFNULL((SELECT SUM(
-                    CASE 
-                        WHEN users.data_limit IS NOT NULL THEN users.data_limit 
-                        ELSE users.used_traffic 
-                    END
-                ) FROM users WHERE users.admin_id = ?), 0) +
-                IFNULL((SELECT SUM(user_usage_logs.used_traffic_at_reset) FROM user_usage_logs 
-                        WHERE user_usage_logs.user_id IN (SELECT id FROM users WHERE users.admin_id = ?)), 0) +
-                IFNULL((SELECT SUM(user_deletions.reseted_usage) FROM user_deletions WHERE user_deletions.admin_id = ?), 0)
-            ) AS created_traffic_bytes
-        ");
-        $stmtTraffic->bind_param("iii", $adminId, $adminId, $adminId);
+    
+        if ($totalTrafficBytes === null) return;
+    
+        $totalTrafficGb = $totalTrafficBytes / 1073741824;
+    
+        if ($calculateVolume === 'used_traffic') {
+            $stmtTraffic = $this->dbMarzban->prepare("
+                SELECT admins.username, 
+                (
+                    (
+                        SELECT IFNULL(SUM(users.used_traffic), 0)
+                        FROM users
+                        WHERE users.admin_id = admins.id
+                    )
+                    +
+                    (
+                        SELECT IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0)
+                        FROM user_usage_logs
+                        WHERE user_usage_logs.user_id IN (
+                            SELECT id FROM users WHERE users.admin_id = admins.id
+                        )
+                    )
+                    +
+                    (
+                        SELECT IFNULL(SUM(user_deletions.used_traffic), 0) 
+                        + IFNULL(SUM(user_deletions.reseted_usage), 0)
+                        FROM user_deletions
+                        WHERE user_deletions.admin_id = admins.id
+                    )
+                ) / 1073741824 AS used_traffic_gb
+                FROM admins
+                WHERE admins.id = ?
+                GROUP BY admins.username, admins.id;
+            ");
+        } else {
+            $stmtTraffic = $this->dbMarzban->prepare("
+                SELECT admins.username, 
+                (
+                    (
+                        SELECT IFNULL(SUM(
+                            CASE 
+                                WHEN users.data_limit IS NOT NULL THEN users.data_limit 
+                                ELSE users.used_traffic 
+                            END
+                        ), 0)
+                        FROM users
+                        WHERE users.admin_id = admins.id
+                    )
+                    +
+                    (
+                        SELECT IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0)
+                        FROM user_usage_logs
+                        WHERE user_usage_logs.user_id IN (
+                            SELECT id FROM users WHERE users.admin_id = admins.id
+                        )
+                    )
+                    +
+                    (
+                        SELECT IFNULL(SUM(user_deletions.reseted_usage), 0)
+                        FROM user_deletions
+                        WHERE user_deletions.admin_id = admins.id
+                    )
+                ) / 1073741824 AS created_traffic_gb
+                FROM admins
+                WHERE admins.id = ?
+                GROUP BY admins.username, admins.id;
+            ");
+        }
+    
+        $stmtTraffic->bind_param("i", $adminId);
         $stmtTraffic->execute();
         $trafficResult = $stmtTraffic->get_result();
         $trafficData = $trafficResult->fetch_assoc();
         $stmtTraffic->close();
 
-        $createdTrafficBytes = $trafficData['created_traffic_bytes'] ?? 0;
+        $usedTraffic = isset($trafficData['used_traffic_gb']) ? round($trafficData['used_traffic_gb'], 2) : (isset($trafficData['created_traffic_gb']) ? round($trafficData['created_traffic_gb'], 2) : 0);
 
-        $isOverLimit = ($createdTrafficBytes >= $totalTrafficBytes);
-
+        $trafficGb = ($calculateVolume === 'used_traffic') ? ($trafficData['used_traffic_gb'] ?? 0) : ($trafficData['created_traffic_gb'] ?? 0);
+    
+       # $isOverLimit = ($trafficGb >= $totalTrafficGb);
+       
+        $isOverLimit = ($usedTraffic >= $totalTrafficGb);
+        
         if ($isOverLimit) {
-            $this->manageTrigger($insertTriggerName, $adminId, true, 'INSERT');
-            $this->manageTrigger($updateTriggerName, $adminId, true, 'UPDATE');
+            $this->manageTrigger($adminId, true, $insertTriggerName, 'INSERT');
+            $this->manageTrigger($adminId, true, $updateTriggerName, 'UPDATE');
         } else {
             $this->dropTriggerIfExists($insertTriggerName);
             $this->dropTriggerIfExists($updateTriggerName);
         }
     }
 
-    public function manageTrafficUsage($adminId, $traffic, $calculateVolume, $totalTraffic) {
-        $stmt = $this->dbBot->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
+    public function manageTrafficUsage($adminId, $adminInfo) {
+        $stmt = $this->dbBot->prepare("SELECT calculate_volume, status, total_traffic FROM admin_settings WHERE admin_id = ?");
         $stmt->bind_param("i", $adminId);
         $stmt->execute();
-        $currentStatus = json_decode($stmt->get_result()->fetch_assoc()['status'], true);
+        $result = $stmt->get_result();
+        $settings = $result->fetch_assoc();
         $stmt->close();
     
+        $calculateVolume = $settings['calculate_volume'] ?? 'used_traffic';
+        $currentStatus = json_decode($settings['status'], true) ?? ['data' => 'active', 'time' => 'active', 'users' => 'active'];
+        $totalTraffic = $settings['total_traffic'] > 0 ? round($settings['total_traffic'] / 1073741824, 2) : self::INFINITY;
+    
         if ($calculateVolume === 'used_traffic') {
-            $usedTraffic = round($traffic['used_traffic_gb'] ?? 0, 2);
+            $usedTraffic = round($adminInfo['usedTraffic'], 2); 
         } else {
-            $usedTraffic = round($traffic['created_traffic_gb'] ?? 0, 2);
+            $usedTraffic = round($adminInfo['usedTraffic'], 2); 
         }
+    
         $remainingTraffic = $totalTraffic !== self::INFINITY ? round($totalTraffic - $usedTraffic, 2) : self::INFINITY;
     
         if ($remainingTraffic <= 0 && $currentStatus['data'] !== 'exhausted') {
-            $adminInfo = $this->getAdminInfo($adminId);
             $lang = $this->getLang(reset($this->allowedUsers));
             $message = sprintf($lang['traffic_exhausted_notify'], $adminInfo['username'], $adminId);
             $keyboard = $this->getAdminKeyboard($adminId, $currentStatus);
@@ -537,6 +588,19 @@ class PanelManager {
             $stmt->bind_param("si", $newStatus, $adminId);
             $stmt->execute();
             $stmt->close();
+    
+            $this->manageCreatedTrafficTrigger($adminId); 
+        }
+        elseif ($remainingTraffic > 0 && $currentStatus['data'] === 'exhausted') {
+            $currentStatus['data'] = 'active';
+            $newStatus = json_encode($currentStatus);
+            $stmt = $this->dbBot->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
+            $stmt->bind_param("si", $newStatus, $adminId);
+            $stmt->execute();
+            $stmt->close();
+    
+            $this->dropTriggerIfExists('cron_prevent_user_creation_traffic');
+            $this->dropTriggerIfExists('cron_prevent_user_update_traffic');
         }
     
         return $remainingTraffic;
@@ -765,10 +829,10 @@ class PanelManager {
             if (!$adminInfo) continue;
         
             $this->managePanelExtension($adminId, $adminInfo);
-            $this->manageTrafficUsage($adminId, $adminInfo);
+            $this->manageTrafficUsage($adminId, $adminInfo); 
             $this->manageUserLimitTrigger($adminId);
             $this->manageCreatedTrafficTrigger($adminId);
-
+    
             if ($currentTime === '00:00') {
                 $stmt = $this->dbMarzban->prepare("SELECT telegram_id, username FROM admins WHERE id = ?");
                 $stmt->bind_param("i", $adminId);
