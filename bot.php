@@ -156,6 +156,9 @@ function getAdminManagementKeyboard($adminId, $status, $userId) {
     return [
         'inline_keyboard' => [
             [
+                ['text' => $lang['calculate_volume'], 'callback_data' => 'calculate_volume']
+            ],
+            [
                 ['text' => $lang['admin_specifications_settings'], 'callback_data' => 'show_display_only_admin']
             ],
             [
