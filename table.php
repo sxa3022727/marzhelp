@@ -14,6 +14,7 @@ function checkAndCreateTablesAndColumns($botConn) {
     $tableAdminSettings = "CREATE TABLE IF NOT EXISTS `admin_settings` (
         `admin_id` int NOT NULL,
         `total_traffic` bigint DEFAULT NULL,
+        `used_traffic` bigint DEFAULT 0,
         `expiry_date` date DEFAULT NULL,
         `status` JSON DEFAULT NULL,
         `user_limit` bigint DEFAULT NULL,
@@ -22,6 +23,7 @@ function checkAndCreateTablesAndColumns($botConn) {
         `last_expiry_notification` timestamp NULL DEFAULT NULL,
         `last_traffic_notification` int DEFAULT NULL,
         `last_traffic_notify` int DEFAULT NULL,
+        `calculate_volume` varchar(20) AS (used_traffic),
         PRIMARY KEY (`admin_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;";
     
@@ -77,7 +79,9 @@ function checkAndCreateTablesAndColumns($botConn) {
         'hashed_password_before' => "ALTER TABLE `admin_settings` ADD `hashed_password_before` varchar(255) DEFAULT NULL;",
         'last_expiry_notification' => "ALTER TABLE `admin_settings` ADD `last_expiry_notification` timestamp NULL DEFAULT NULL;",
         'last_traffic_notification' => "ALTER TABLE `admin_settings` ADD `last_traffic_notification` int DEFAULT NULL;",
-        'last_traffic_notify' => "ALTER TABLE `admin_settings` ADD `last_traffic_notify` int DEFAULT NULL;"
+        'last_traffic_notify' => "ALTER TABLE `admin_settings` ADD `last_traffic_notify` int DEFAULT NULL;",
+        'used_traffic' => "ALTER TABLE `admin_settings` ADD `used_traffic` bigint DEFAULT 0;",
+        'calculate_volume' => "ALTER TABLE `admin_settings` ADD `calculate_volume` varchar(20) AS (used_traffic);"
     ];
     $hasCriticalError = $hasCriticalError || checkAndAddColumns($botConn, 'admin_settings', $columnsAdminSettings);
 
