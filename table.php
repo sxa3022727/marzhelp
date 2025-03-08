@@ -143,7 +143,7 @@ function checkAndAddColumns($botConn, $tableName, $columns) {
 
     return $hasCriticalError;
 }
-
+ 
 function setupCronJob($scriptPath) {
     $cronJob = "* * * * * /usr/bin/php $scriptPath";
     $oldCronJob = "* * * * * /usr/bin/php /var/www/html/marzhelp/cron.php";
