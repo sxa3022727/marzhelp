@@ -156,7 +156,7 @@ function getAdminManagementKeyboard($adminId, $status, $userId) {
     return [
         'inline_keyboard' => [
             [
-                ['text' => $lang['calculate_volume'], 'callback_data' => 'calculate_volume']
+                ['text' => $lang['calculate_volume'], 'callback_data' => 'calculate_volume:' . $adminId]            
             ],
             [
                 ['text' => $lang['admin_specifications_settings'], 'callback_data' => 'show_display_only_admin']
@@ -644,7 +644,68 @@ function getUserTemplateIndex($userId) {
 
     return $templateIndex !== null ? $templateIndex : 0; 
 }
+function getAdminExpireKeyboard($adminId, $userId) {
+    global $botConn; 
 
+    $lang = getLang($userId); 
+
+    $stmt = $botConn->prepare("SELECT status, hashed_password_before FROM admin_settings WHERE admin_id = ?");
+    $stmt->bind_param("i", $adminId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    $stmt->close();
+
+    $currentStatus = $row && $row['status'] ? json_decode($row['status'], true) : ['time' => 'active', 'data' => 'active', 'users' => 'active'];
+    $usersButtonText = ($currentStatus['users'] === 'active') ? $lang['disable_users_button'] : $lang['enable_users_button'];
+
+    $hashedPasswordBefore = $row['hashed_password_before'] ?? null;
+    $passwordButtonText = ($hashedPasswordBefore) ? $lang['restore_password'] : $lang['change_password_temp'];
+
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => $usersButtonText, 'callback_data' => ($currentStatus['users'] === 'active') ? "disable_users_{$adminId}" : "enable_users_{$adminId}"],
+                ['text' => $passwordButtonText, 'callback_data' => ($hashedPasswordBefore) ? "restore_password_{$adminId}" : "change_password_{$adminId}"]
+            ]
+        ]
+    ];
+}
+
+function getCalculateVolumeKeyboard($adminId, $userId) {
+    global $botConn;
+    $lang = getLang($userId);
+
+    $stmt = $botConn->prepare("SELECT calculate_volume FROM admin_settings WHERE admin_id = ?");
+    $stmt->bind_param("i", $adminId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $calculateVolume = $result->fetch_assoc()['calculate_volume'] ?? 'used_traffic';
+    $stmt->close();
+
+    $usedTrafficText = $lang['used_traffic_button'];
+    $createdTrafficText = $lang['created_traffic_button'];
+
+    if ($calculateVolume === 'used_traffic') {
+        $usedTrafficText .= ' ✅';
+    } else {
+        $createdTrafficText .= ' ✅';
+    }
+
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => $usedTrafficText, 'callback_data' => 'set_calculate_volume:used_traffic:' . $adminId]
+            ],
+            [
+                ['text' => $createdTrafficText, 'callback_data' => 'set_calculate_volume:created_traffic:' . $adminId]
+            ],
+            [
+                ['text' => $lang['back'], 'callback_data' => 'select_admin:' . $adminId]
+            ]
+        ]
+    ];
+}
 
 function getAdminInfo($adminId) {
     global $marzbanConn, $botConn;
@@ -662,55 +723,93 @@ function getAdminInfo($adminId) {
     $adminUsername = $admin['username'];
     $stmtAdmin->close();
 
-    $stmtTraffic = $marzbanConn->prepare("
-    SELECT admins.username, 
-    (
-        (
-            SELECT IFNULL(SUM(users.used_traffic), 0)
-            FROM users
-            WHERE users.admin_id = admins.id
-        )
-        +
-        (
-            SELECT IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0)
-            FROM user_usage_logs
-            WHERE user_usage_logs.user_id IN (
-                SELECT id FROM users WHERE users.admin_id = admins.id
-            )
-        )
-        +
-        (
-            SELECT IFNULL(SUM(user_deletions.used_traffic), 0) 
-            + IFNULL(SUM(user_deletions.reseted_usage), 0)
-            FROM user_deletions
-            WHERE user_deletions.admin_id = admins.id
-        )
-    ) / 1073741824 AS used_traffic_gb
-    FROM admins
-    WHERE admins.id = ?
-    GROUP BY admins.username, admins.id;
-    ");
+    $stmtSettings = $botConn->prepare("SELECT total_traffic, expiry_date, status, user_limit, calculate_volume FROM admin_settings WHERE admin_id = ?");
+    $stmtSettings->bind_param("i", $adminId);
+    $stmtSettings->execute();
+    $settingsResult = $stmtSettings->get_result();
+    $settings = $settingsResult->fetch_assoc();
+    $stmtSettings->close();
+
+    $calculateVolume = $settings['calculate_volume'] ?? 'used_traffic';
+
+    if ($calculateVolume === 'used_traffic') {
+        $stmtTraffic = $marzbanConn->prepare("
+            SELECT admins.username, 
+            (
+                (
+                    SELECT IFNULL(SUM(users.used_traffic), 0)
+                    FROM users
+                    WHERE users.admin_id = admins.id
+                )
+                +
+                (
+                    SELECT IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0)
+                    FROM user_usage_logs
+                    WHERE user_usage_logs.user_id IN (
+                        SELECT id FROM users WHERE users.admin_id = admins.id
+                    )
+                )
+                +
+                (
+                    SELECT IFNULL(SUM(user_deletions.used_traffic), 0) 
+                    + IFNULL(SUM(user_deletions.reseted_usage), 0)
+                    FROM user_deletions
+                    WHERE user_deletions.admin_id = admins.id
+                )
+            ) / 1073741824 AS used_traffic_gb
+            FROM admins
+            WHERE admins.id = ?
+            GROUP BY admins.username, admins.id;
+        ");
+    } else {
+        $stmtTraffic = $marzbanConn->prepare("
+            SELECT admins.username, 
+            (
+                (
+                    SELECT IFNULL(SUM(
+                        CASE 
+                            WHEN users.data_limit IS NOT NULL THEN users.data_limit 
+                            ELSE users.used_traffic 
+                        END
+                    ), 0)
+                    FROM users
+                    WHERE users.admin_id = admins.id
+                )
+                +
+                (
+                    SELECT IFNULL(SUM(user_usage_logs.used_traffic_at_reset), 0)
+                    FROM user_usage_logs
+                    WHERE user_usage_logs.user_id IN (
+                        SELECT id FROM users WHERE users.admin_id = admins.id
+                    )
+                )
+                +
+                (
+                    SELECT IFNULL(SUM(user_deletions.reseted_usage), 0)
+                    FROM user_deletions
+                    WHERE user_deletions.admin_id = admins.id
+                )
+            ) / 1073741824 AS created_traffic_gb
+            FROM admins
+            WHERE admins.id = ?
+            GROUP BY admins.username, admins.id;
+        ");
+    }
+
     $stmtTraffic->bind_param("i", $adminId);
     $stmtTraffic->execute();
     $trafficResult = $stmtTraffic->get_result();
     $trafficData = $trafficResult->fetch_assoc();
     $stmtTraffic->close();
 
-    $usedTraffic = isset($trafficData['used_traffic_gb']) ? round($trafficData['used_traffic_gb'], 2) : 0;
+    $usedTraffic = isset($trafficData['used_traffic_gb']) ? round($trafficData['used_traffic_gb'], 2) : (isset($trafficData['created_traffic_gb']) ? round($trafficData['created_traffic_gb'], 2) : 0);
 
-    $stmtSettings = $botConn->prepare("SELECT total_traffic, expiry_date, status, user_limit FROM admin_settings WHERE admin_id = ?");
-    $stmtSettings->bind_param("i", $adminId);
-    $stmtSettings->execute();
-    $settingsResult = $stmtSettings->get_result();
-    $settings = $settingsResult->fetch_assoc();
-    $stmtSettings->close();
-    
     $totalTraffic = isset($settings['total_traffic']) ? round($settings['total_traffic'] / 1073741824, 2) : '♾️';
     $remainingTraffic = ($totalTraffic !== '♾️') ? round($totalTraffic - $usedTraffic, 2) : '♾️';
-    
+
     $expiryDate = isset($settings['expiry_date']) ? $settings['expiry_date'] : '♾️';
     $daysLeft = ($expiryDate !== '♾️') ? ceil((strtotime($expiryDate) - time()) / 86400) : '♾️';
-    
+
     $statusArray = json_decode($settings['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
     $status = $statusArray['users'];
 
@@ -730,11 +829,7 @@ function getAdminInfo($adminId) {
     $stmtUserStats->close();
 
     $userLimit = isset($settings['user_limit']) ? $settings['user_limit'] : '♾️';
-    if ($userLimit !== '♾️') {
-        $remainingUserLimit = $userLimit - $userStats['active_users'];
-    } else {
-        $remainingUserLimit = '♾️';
-    }
+    $remainingUserLimit = ($userLimit !== '♾️') ? $userLimit - $userStats['active_users'] : '♾️';
 
     $preventUserCreation = triggerCheck($marzbanConn, 'prevent_user_creation', $adminId);
     $preventUserReset = triggerCheck($marzbanConn, 'prevent_User_Reset_Usage', $adminId);
@@ -3115,11 +3210,13 @@ if (strpos($data, 'disable_users_') === 0) {
         $stmt->execute();
         $stmt->close();
 
-        $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
+        $stmt = $botConn->prepare("SELECT status, hashed_password_before FROM admin_settings WHERE admin_id = ?");
         $stmt->bind_param("i", $adminId);
         $stmt->execute();
         $result = $stmt->get_result();
-        $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
+        $row = $result->fetch_assoc();
+        $currentStatus = json_decode($row['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
+        $currentStatus['hashed_password_before'] = $row['hashed_password_before'];
         $stmt->close();
 
         $currentStatus['users'] = 'disabled';
@@ -3130,14 +3227,7 @@ if (strpos($data, 'disable_users_') === 0) {
         $stmt->execute();
         $stmt->close();
 
-        $newKeyboard = [
-            'inline_keyboard' => [
-                [
-                    ['text' => 'فعال کردن کاربران', 'callback_data' => "enable_users_{$adminId}"],
-                    ['text' => 'عوض کردن پسورد ادمین', 'callback_data' => "change_password_{$adminId}"]
-                ]
-            ]
-        ];
+        $newKeyboard = getAdminExpireKeyboard($adminId, $userId);
 
         sendRequest('editMessageReplyMarkup', [
             'chat_id' => $chatId,
@@ -3147,7 +3237,7 @@ if (strpos($data, 'disable_users_') === 0) {
 
         sendRequest('answerCallbackQuery', [
             'callback_query_id' => $callbackId,
-            'text' => 'کاربران غیرفعال شدند.',
+            'text' => $lang['users_disabled'],
             'show_alert' => true
         ]);
     }
@@ -3162,11 +3252,13 @@ if (strpos($data, 'enable_users_') === 0) {
         $stmt->execute();
         $stmt->close();
 
-        $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
+        $stmt = $botConn->prepare("SELECT status, hashed_password_before FROM admin_settings WHERE admin_id = ?");
         $stmt->bind_param("i", $adminId);
         $stmt->execute();
         $result = $stmt->get_result();
-        $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'disabled'];
+        $row = $result->fetch_assoc();
+        $currentStatus = json_decode($row['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'disabled'];
+        $currentStatus['hashed_password_before'] = $row['hashed_password_before'];
         $stmt->close();
 
         $currentStatus['users'] = 'active';
@@ -3177,14 +3269,7 @@ if (strpos($data, 'enable_users_') === 0) {
         $stmt->execute();
         $stmt->close();
 
-        $newKeyboard = [
-            'inline_keyboard' => [
-                [
-                    ['text' => 'غیرفعال کردن کاربران', 'callback_data' => "disable_users_{$adminId}"],
-                    ['text' => 'عوض کردن پسورد ادمین', 'callback_data' => "change_password_{$adminId}"]
-                ]
-            ]
-        ];
+        $newKeyboard = getAdminExpireKeyboard($adminId, $userId);
 
         sendRequest('editMessageReplyMarkup', [
             'chat_id' => $chatId,
@@ -3194,7 +3279,7 @@ if (strpos($data, 'enable_users_') === 0) {
 
         sendRequest('answerCallbackQuery', [
             'callback_query_id' => $callbackId,
-            'text' => 'کاربران فعال شدند.',
+            'text' => $lang['users_enabled'],
             'show_alert' => true
         ]);
     }
@@ -3204,46 +3289,59 @@ if (strpos($data, 'enable_users_') === 0) {
 if (strpos($data, 'change_password_') === 0) {
     $adminId = str_replace('change_password_', '', $data);
     if (in_array($userId, $allowedUsers)) {
-        $newPassword = generateRandomPassword();
-        $hashedPassword = password_hash($newPassword, PASSWORD_BCRYPT);
-
-        $stmt = $marzbanConn->prepare("SELECT hashed_password FROM admins WHERE id = ?");
+        $stmt = $botConn->prepare("SELECT hashed_password_before, status FROM admin_settings WHERE admin_id = ?");
         $stmt->bind_param("i", $adminId);
         $stmt->execute();
-        $stmt->bind_result($currentPassword);
-        $stmt->fetch();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $hashedPasswordBefore = $row['hashed_password_before'];
+        $currentStatus = json_decode($row['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
         $stmt->close();
 
-        $stmt = $botConn->prepare("UPDATE admin_settings SET hashed_password_before = ? WHERE admin_id = ?");
-        $stmt->bind_param("si", $currentPassword, $adminId);
-        $stmt->execute();
-        $stmt->close();
+        $lang = getLang($userId);
 
-        $stmt = $marzbanConn->prepare("UPDATE admins SET hashed_password = ? WHERE id = ?");
-        $stmt->bind_param("si", $hashedPassword, $adminId);
-        $stmt->execute();
-        $stmt->close();
+        if (empty($hashedPasswordBefore)) {
+            $newPassword = generateRandomPassword();
+            $hashedPassword = password_hash($newPassword, PASSWORD_BCRYPT);
 
-        $newKeyboard = [
-            'inline_keyboard' => [
-                [
-                    ['text' => 'غیرفعال کردن کاربران', 'callback_data' => "disable_users_{$adminId}"],
-                    ['text' => 'بازگرداندن پسورد ادمین', 'callback_data' => "restore_password_{$adminId}"]
-                ]
-            ]
-        ];
+            $stmt = $marzbanConn->prepare("SELECT hashed_password FROM admins WHERE id = ?");
+            $stmt->bind_param("i", $adminId);
+            $stmt->execute();
+            $stmt->bind_result($currentPassword);
+            $stmt->fetch();
+            $stmt->close();
 
-        sendRequest('editMessageReplyMarkup', [
-            'chat_id' => $chatId,
-            'message_id' => $messageId,
-            'reply_markup' => json_encode($newKeyboard)
-        ]);
+            $stmt = $botConn->prepare("UPDATE admin_settings SET hashed_password_before = ? WHERE admin_id = ?");
+            $stmt->bind_param("si", $currentPassword, $adminId);
+            $stmt->execute();
+            $stmt->close();
 
-        sendRequest('answerCallbackQuery', [
-            'callback_query_id' => $callbackId,
-            'text' => "پسورد ادمین عوض شد: $newPassword",
-            'show_alert' => true
-        ]);
+            $stmt = $marzbanConn->prepare("UPDATE admins SET hashed_password = ? WHERE id = ?");
+            $stmt->bind_param("si", $hashedPassword, $adminId);
+            $stmt->execute();
+            $stmt->close();
+
+            $newKeyboard = getAdminExpireKeyboard($adminId, $userId);
+
+            sendRequest('editMessageReplyMarkup', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'reply_markup' => json_encode($newKeyboard)
+            ]);
+
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => $lang['password_changed'] . " : " . $newPassword,
+                'show_alert' => true
+            ]);
+        } else {
+            
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => $lang['password_already_changed'], 
+                'show_alert' => true
+            ]);
+        }
     }
     return;
 }
@@ -3251,12 +3349,16 @@ if (strpos($data, 'change_password_') === 0) {
 if (strpos($data, 'restore_password_') === 0) {
     $adminId = str_replace('restore_password_', '', $data);
     if (in_array($userId, $allowedUsers)) {
-        $stmt = $botConn->prepare("SELECT hashed_password_before FROM admin_settings WHERE admin_id = ?");
+        $stmt = $botConn->prepare("SELECT hashed_password_before, status FROM admin_settings WHERE admin_id = ?");
         $stmt->bind_param("i", $adminId);
         $stmt->execute();
-        $stmt->bind_result($hashedPasswordBefore);
-        $stmt->fetch();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $hashedPasswordBefore = $row['hashed_password_before'];
+        $currentStatus = json_decode($row['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
         $stmt->close();
+
+        $lang = getLang($userId); 
 
         if ($hashedPasswordBefore) {
             $stmt = $marzbanConn->prepare("UPDATE admins SET hashed_password = ? WHERE id = ?");
@@ -3269,14 +3371,7 @@ if (strpos($data, 'restore_password_') === 0) {
             $stmt->execute();
             $stmt->close();
 
-            $newKeyboard = [
-                'inline_keyboard' => [
-                    [
-                        ['text' => 'غیرفعال کردن کاربران', 'callback_data' => "disable_users_{$adminId}"],
-                        ['text' => 'عوض کردن پسورد ادمین', 'callback_data' => "change_password_{$adminId}"]
-                    ]
-                ]
-            ];
+            $newKeyboard = getAdminExpireKeyboard($adminId, $userId);
 
             sendRequest('editMessageReplyMarkup', [
                 'chat_id' => $chatId,
@@ -3286,20 +3381,64 @@ if (strpos($data, 'restore_password_') === 0) {
 
             sendRequest('answerCallbackQuery', [
                 'callback_query_id' => $callbackId,
-                'text' => 'پسورد ادمین به حالت قبلی برگشت.',
+                'text' => $lang['password_changed'], 
                 'show_alert' => true
             ]);
         } else {
             sendRequest('answerCallbackQuery', [
                 'callback_query_id' => $callbackId,
-                'text' => 'پسورد قبلی موجود نیست.',
+                'text' => 'password not found.', 
                 'show_alert' => true
             ]);
         }
     }
     return;
 }
-    
+
+if (strpos($data, 'calculate_volume:') === 0) {
+    list(, $adminId) = explode(':', $data);
+    $adminId = (int)$adminId;
+
+    $keyboard = getCalculateVolumeKeyboard($adminId, $chatId);
+
+    $adminInfo = getAdminInfo($adminId, $userId);
+    $adminInfo['adminId'] = $adminId;
+    $infoText = getAdminInfoText($adminInfo, $userId);
+
+    sendRequest('editMessageText', [
+        'chat_id' => $chatId,
+        'message_id' => $messageId,
+        'text' => $infoText,
+        'parse_mode' => 'Markdown',
+        'reply_markup' => json_encode($keyboard)
+    ]);
+
+}
+
+if (strpos($data, 'set_calculate_volume:') === 0) {
+    list(, $type, $adminId) = explode(':', $data);
+
+    $adminId = (int)$adminId;
+
+    $stmt = $botConn->prepare("UPDATE admin_settings SET calculate_volume = ? WHERE admin_id = ?");
+    $stmt->bind_param("si", $type, $adminId);
+    $stmt->execute();
+    $stmt->close();
+
+    $adminInfo = getAdminInfo($adminId, $userId);
+    $adminInfo['adminId'] = $adminId;
+    $infoText = getAdminInfoText($adminInfo, $userId);
+
+    $keyboard = getCalculateVolumeKeyboard($adminId, $chatId);
+
+    sendRequest('editMessageText', [
+        'chat_id' => $chatId,
+        'message_id' => $messageId,
+        'text' => $infoText,
+        'parse_mode' => 'Markdown',
+        'reply_markup' => json_encode($keyboard)
+    ]);
+    }
 }
 
     function handleMessage($message) {
