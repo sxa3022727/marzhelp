@@ -15,7 +15,7 @@ function checkAndCreateTablesAndColumns($botConn) {
         `admin_id` int NOT NULL,
         `total_traffic` bigint DEFAULT NULL,
         `expiry_date` date DEFAULT NULL,
-        `status` varchar(50) DEFAULT 'active',
+        `status` JSON DEFAULT NULL,
         `user_limit` bigint DEFAULT NULL,
         `hashed_password_before` varchar(255) DEFAULT NULL,
         `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -24,7 +24,7 @@ function checkAndCreateTablesAndColumns($botConn) {
         `last_traffic_notify` int DEFAULT NULL,
         PRIMARY KEY (`admin_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;";
-
+    
     if (!$botConn->query($tableAdminSettings)) {
         echo "Critical error creating `admin_settings`: " . $botConn->error . "\n";
         $hasCriticalError = true;
@@ -98,6 +98,31 @@ function checkAndCreateTablesAndColumns($botConn) {
     ];
     $hasCriticalError = $hasCriticalError || checkAndAddColumns($botConn, 'user_temporaries', $columnsUserTemporaries);
 
+    $columnStatusType = $botConn->query("SHOW COLUMNS FROM `admin_settings` LIKE 'status'")->fetch_assoc();
+    if ($columnStatusType && strpos($columnStatusType['Type'], 'json') === false) {
+        $alterStatusQuery = "ALTER TABLE `admin_settings` MODIFY `status` JSON;";
+        if ($botConn->query($alterStatusQuery) === TRUE) {
+            echo "Column 'status' in 'admin_settings' modified to JSON successfully.\n";
+    
+            $defaultStatus = '{"data": "active", "time": "active", "users": "active"}';
+            $setDefaultQuery = "ALTER TABLE `admin_settings` ALTER COLUMN `status` SET DEFAULT '$defaultStatus';";
+            if ($botConn->query($setDefaultQuery) === TRUE) {
+                echo "Default value for 'status' column set successfully.\n";
+            } else {
+                echo "Error setting default value for 'status' column: " . $botConn->error . "\n";
+            }
+    
+            $updateExistingQuery = "UPDATE `admin_settings` SET `status` = '$defaultStatus' WHERE `status` IS NULL OR `status` = '';";
+            if ($botConn->query($updateExistingQuery) === TRUE) {
+                echo "Existing records updated with default status.\n";
+            } else {
+                echo "Error updating existing records: " . $botConn->error . "\n";
+            }
+        } else {
+            echo "Error modifying 'status' column in 'admin_settings': " . $botConn->error . "\n";
+        }
+    }
+
     return $hasCriticalError;
 }
 
@@ -121,21 +146,33 @@ function checkAndAddColumns($botConn, $tableName, $columns) {
 
 function setupCronJob($scriptPath) {
     $cronJob = "* * * * * /usr/bin/php $scriptPath";
-    
-    $currentCronJobs = shell_exec('crontab -l 2>/dev/null');
-    
-    if (strpos($currentCronJobs, $cronJob) === false) {
-        $newCronJobs = trim($currentCronJobs) . PHP_EOL . $cronJob . PHP_EOL;
-        
-        file_put_contents('/tmp/crontab.txt', $newCronJobs);
-        exec('crontab /tmp/crontab.txt');
-        unlink('/tmp/crontab.txt');
+    $oldCronJob = "* * * * * /usr/bin/php /var/www/html/marzhelp/cron.php";
+
+    $currentCronJobs = shell_exec('crontab -l 2>/dev/null') ?: ''; 
+
+    $cronLines = explode(PHP_EOL, trim($currentCronJobs));
+    $newCronLines = [];
+
+    foreach ($cronLines as $line) {
+        if (trim($line) !== $oldCronJob) {
+            $newCronLines[] = $line;
+        }
     }
+
+    if (!in_array($cronJob, $newCronLines)) {
+        $newCronLines[] = $cronJob;
+    }
+
+    $newCronJobs = implode(PHP_EOL, $newCronLines) . PHP_EOL;
+
+    file_put_contents('/tmp/crontab.txt', $newCronJobs);
+    exec('crontab /tmp/crontab.txt');
+    unlink('/tmp/crontab.txt');
 }
 
 $hasCriticalError = checkAndCreateTablesAndColumns($botConn);
 
-$scriptPath = "/var/www/html/marzhelp/cron.php";
+$scriptPath = "/var/www/html/marzhelp/crons/cron.php";
 setupCronJob($scriptPath);
 
 $botConn->close();

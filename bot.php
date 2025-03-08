@@ -7,14 +7,14 @@ date_default_timezone_set('Asia/Tehran');
 
 if (php_sapi_name() !== 'cli') {
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        header("Location: https://roverloom.com/");
+        header("Location: https://t.me/marzhelp");
         exit;
     }
 }
 
 require 'config.php';
 
-$latestVersion = 'v0.2.2(Temporary)';
+$latestVersion = 'v0.2.3';
 
 $botConn = new mysqli($botDbHost, $botDbUser, $botDbPass, $botDbName);
 if ($botConn->connect_error) {
@@ -701,14 +701,15 @@ function getAdminInfo($adminId) {
     $settingsResult = $stmtSettings->get_result();
     $settings = $settingsResult->fetch_assoc();
     $stmtSettings->close();
-
+    
     $totalTraffic = isset($settings['total_traffic']) ? round($settings['total_traffic'] / 1073741824, 2) : '♾️';
     $remainingTraffic = ($totalTraffic !== '♾️') ? round($totalTraffic - $usedTraffic, 2) : '♾️';
-
+    
     $expiryDate = isset($settings['expiry_date']) ? $settings['expiry_date'] : '♾️';
     $daysLeft = ($expiryDate !== '♾️') ? ceil((strtotime($expiryDate) - time()) / 86400) : '♾️';
-
-    $status = isset($settings['status']) ? $settings['status'] : 'active';
+    
+    $statusArray = json_decode($settings['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
+    $status = $statusArray['users'];
 
     $stmtUserStats = $marzbanConn->prepare("
         SELECT
@@ -2026,8 +2027,18 @@ function handleCallbackQuery($callback_query) {
 
         $marzbanConn->query("UPDATE users SET status = 'disabled' WHERE admin_id = '$adminId' AND status = 'active'");
 
-        $stmt = $botConn->prepare("UPDATE admin_settings SET status = 'disabled' WHERE admin_id = ?");
+        $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
         $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
+        $stmt->close();
+        
+        $currentStatus['users'] = 'disabled';
+        $newStatus = json_encode($currentStatus);
+        
+        $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
+        $stmt->bind_param("si", $newStatus, $adminId);
         $stmt->execute();
         $stmt->close();
 
@@ -2062,8 +2073,18 @@ function handleCallbackQuery($callback_query) {
 
         $marzbanConn->query("UPDATE users SET status = 'active' WHERE admin_id = '$adminId' AND status = 'disabled'");
 
-        $stmt = $botConn->prepare("UPDATE admin_settings SET status = 'active' WHERE admin_id = ?");
+        $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
         $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'disabled'];
+        $stmt->close();
+
+        $currentStatus['users'] = 'active';
+        $newStatus = json_encode($currentStatus);
+
+        $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
+        $stmt->bind_param("si", $newStatus, $adminId);
         $stmt->execute();
         $stmt->close();
 
@@ -2797,13 +2818,12 @@ function handleCallbackQuery($callback_query) {
                 $dbUpdateCommand = "php /var/www/html/marzhelp/table.php";
                 exec($dbUpdateCommand, $db_output, $db_return_var);
         
+                sendRequest('deleteMessage', [
+                    'chat_id' => $chatId,
+                    'message_id' => $userState['message_id'],
+                ]);
         
-                if (trim($dbOutput) === "") {
-
-                    sendRequest('deleteMessage', [
-                        'chat_id' => $chatId,
-                        'message_id' => $userState['message_id'],
-                    ]);
+                if ($db_return_var === 0 && empty($db_output)) {
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
                         'text' => $lang['update_success'] . " $latestVersion"
@@ -2814,23 +2834,17 @@ function handleCallbackQuery($callback_query) {
                         'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
                     ]);
                 } else {
-                    
-                    sendRequest('deleteMessage', [
-                        'chat_id' => $chatId,
-                        'message_id' => $userState['message_id'],
-                    ]);
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
-                        'text' => $lang['db_update_failed'] 
+                        'text' => $lang['db_update_failed']
                     ]);
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
                         'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
                         'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
-                    ]);    
+                    ]);
                 }
             } else {
-
                 sendRequest('deleteMessage', [
                     'chat_id' => $chatId,
                     'message_id' => $userState['message_id'],
@@ -2941,266 +2955,50 @@ function handleCallbackQuery($callback_query) {
                 ]
             ];
         
-            sendRequest('editMessageText', [
+           /* sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
                 'text' => $lang['backup_settings'],
                 'reply_markup' => $keyboard
+            ]); */
+        
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $userState['message_id'],
+                'text' => 'This option is not available.'
             ]);
+        
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+                'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
+            ]);
+        }
+        
+        
+        if ($data === 'update_marzban') {
+
+            $command = 'sudo /usr/local/bin/marzban update 2>&1';
+            $output = shell_exec($command);
+            
+              $outputText = implode("\n", $output);
+            
+              file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Marzban update output:\n" . $outputText . "\n", FILE_APPEND);
+            
     
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $userState['message_id'],
+            'text' => /*'This option is not available.'*/ $lang['marzban_update_success']
+        ]);
+    
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+            'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
+        ]);
+    }
 
-            return;
-        }
-        if ($data === 'marzhelp_backup') {
-            $keyboard = [
-                'inline_keyboard' => [
-                    [
-                        ['text' => $lang['get_backup'], 'callback_data' => 'get_marzhelp_backup'],
-                        ['text' => $lang['restore_backup'], 'callback_data' => 'restore_marzhelp_backup']
-                    ],
-                    [
-                        ['text' => $lang['back'], 'callback_data' => 'backup']
-                    ]
-                ]
-            ];
-        
-            sendRequest('editMessageText', [
-                'chat_id' => $chatId,
-                'message_id' => $messageId,
-                'text' => $lang['marzhelp_backup_options'],
-                'reply_markup' => $keyboard
-            ]);
-            return;
-        }
-        if ($data === 'marzban_backup') {
-            $keyboard = [
-                'inline_keyboard' => [
-                    [
-                        ['text' => $lang['get_backup'], 'callback_data' => 'get_marzban_backup'],
-                        ['text' => $lang['restore_backup'], 'callback_data' => 'restore_marzban_backup']
-                    ],
-                    [
-                        ['text' => $lang['back'], 'callback_data' => 'backup']
-                    ]
-                ]
-            ];
-        
-            sendRequest('editMessageText', [
-                'chat_id' => $chatId,
-                'message_id' => $messageId,
-                'text' => $lang['marzban_backup_options'],
-                'reply_markup' => $keyboard
-            ]);
-            return;
-        }
-        if ($data === 'get_marzban_backup') {
-            $backupFile = '/var/www/html/marzhelp/backups/marzban.sql';
-            $tables = [];
-            $result = $marzbanConn->query("SHOW TABLES");
-        
-            while ($row = $result->fetch_row()) {
-                $tables[] = $row[0];
-            }
-        
-            $backupContent = "-- MySQL dump generated by PHP script\n";
-            $backupContent .= "-- Host: localhost    Database: marzban\n";
-            $backupContent .= "-- ------------------------------------------------------\n";
-            $backupContent .= "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;\n";
-            $backupContent .= "/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;\n";
-            $backupContent .= "/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;\n";
-            $backupContent .= "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n";
-            $backupContent .= "/*!40103 SET TIME_ZONE='+00:00' */;\n";
-            $backupContent .= "/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;\n";
-            $backupContent .= "/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;\n";
-            $backupContent .= "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n";
-            $backupContent .= "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n\n";
-        
-            foreach ($tables as $table) {
-                $result = $marzbanConn->query("SHOW CREATE TABLE `$table`");
-                $row = $result->fetch_row();
-                $backupContent .= "--\n-- Table structure for table `$table`\n--\n";
-                $backupContent .= "DROP TABLE IF EXISTS `$table`;\n";
-                $backupContent .= $row[1] . ";\n\n";
-        
-                $backupContent .= "--\n-- Dumping data for table `$table`\n--\n";
-                $backupContent .= "LOCK TABLES `$table` WRITE;\n";
-                $backupContent .= "/*!40000 ALTER TABLE `$table` DISABLE KEYS */;\n";
-        
-                $result = $marzbanConn->query("SELECT * FROM `$table`");
-                while ($row = $result->fetch_assoc()) {
-                    $backupContent .= "INSERT INTO `$table` VALUES (";
-                    $values = [];
-                    foreach ($row as $value) {
-                        $values[] = isset($value) ? "'" . $marzbanConn->real_escape_string($value) . "'" : "NULL";
-                    }
-                    $backupContent .= implode(", ", $values) . ");\n";
-                }
-        
-                $backupContent .= "/*!40000 ALTER TABLE `$table` ENABLE KEYS */;\n";
-                $backupContent .= "UNLOCK TABLES;\n\n";
-            }
-        
-            $backupContent .= "/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n";
-            $backupContent .= "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;\n";
-            $backupContent .= "/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;\n";
-            $backupContent .= "/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;\n";
-            $backupContent .= "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;\n";
-            $backupContent .= "/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;\n";
-            $backupContent .= "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;\n";
-            $backupContent .= "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;\n";
-        
-            file_put_contents($backupFile, $backupContent);
-        
-            if (file_exists($backupFile)) {
-                $filePath = realpath($backupFile);
-                $url = $apiURL . "sendDocument";
-
-                $currentTime = date('Y-m-d H:i:s');
-                
-                $postFields = [
-                    'chat_id' => $chatId,
-                    'document' => new CURLFile($filePath),
-                    'parse_mode' => 'Markdown',
-                    'caption' => "DataBase Backup : `marzban` \nTime: `$currentTime`\n JoinUs: @marzhelp"
-                ];
-            
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type:multipart/form-data"]);
-                curl_setopt($ch, CURLOPT_URL, $url);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
-            
-                $result = curl_exec($ch);
-            
-                if (curl_errno($ch)) {
-                    $errorMsg = curl_error($ch);
-                    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
-                } else {
-                    $response = json_decode($result, true);
-                    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Sending backup result: " . json_encode($response) . "\n", FILE_APPEND);
-                    
-                    sendRequest('deleteMessage', [
-                        'chat_id' => $chatId,
-                        'message_id' => $userState['message_id'],
-                    ]);
-                    sendRequest('sendMessage', [
-                        'chat_id' => $chatId,
-                        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
-                        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
-                    ]);
-                }
-            
-                curl_close($ch);
-            } else {
-                file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - File does not exist: $backupFile\n", FILE_APPEND);
-            }
-            
-            return;
-        }
-
-        if ($data === 'get_marzban_backup') {
-            $backupCommand = "./usr/local/bin/marzban_backup.sh";
-            $output = [];
-            $returnVar = null;
-        
-            exec($backupCommand, $output, $returnVar);
-        
-            if ($returnVar !== 0) {
-                sendRequest('sendMessage', [
-                    'chat_id' => $chatId,
-                    'text' => "❌ خطا در اجرای دستور بکاپ. لطفاً وضعیت سرور را بررسی کنید."
-                ]);
-                return;
-            }
-        
-            $backupFilePath = null;
-            foreach ($output as $line) {
-                if (strpos($line, 'Backup created:') !== false) {
-                    $backupFilePath = trim(str_replace('Backup created:', '', $line));
-                    break;
-                }
-            }
-        
-            if (!$backupFilePath || !file_exists($backupFilePath)) {
-                sendRequest('sendMessage', [
-                    'chat_id' => $chatId,
-                    'text' => "❌ فایل بکاپ پیدا نشد. لطفاً بررسی کنید."
-                ]);
-                return;
-            }
-        
-            $filePath = realpath($backupFilePath);
-            $url = $apiURL . "sendDocument";
-            $currentTime = date('Y-m-d H:i:s');
-        
-            $postFields = [
-                'chat_id' => $chatId,
-                'document' => new CURLFile($filePath),
-                'parse_mode' => 'Markdown',
-                'caption' => "📦 **Backup File:**\n🕒 **Time:** `$currentTime`\nJoin us: @marzhelp"
-            ];
-        
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type:multipart/form-data"]);
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
-        
-            $result = curl_exec($ch);
-        
-            if (curl_errno($ch)) {
-                $errorMsg = curl_error($ch);
-                file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - cURL error: " . $errorMsg . "\n", FILE_APPEND);
-                sendRequest('sendMessage', [
-                    'chat_id' => $chatId,
-                    'text' => "❌ خطا در ارسال فایل بکاپ. لطفاً بررسی کنید."
-                ]);
-                curl_close($ch);
-                return;
-            }
-        
-            curl_close($ch);
-        
-            $response = json_decode($result, true);
-            if (isset($response['ok']) && $response['ok'] === true) {
-                sendRequest('sendMessage', [
-                    'chat_id' => $chatId,
-                    'text' => "✅ بکاپ با موفقیت ارسال شد."
-                ]);
-            } else {
-                sendRequest('sendMessage', [
-                    'chat_id' => $chatId,
-                    'text' => "❌ مشکلی در ارسال فایل بکاپ رخ داده است."
-                ]);
-            }
-                    return;
-        }
-        
-        
-        
-    if ($data === 'update_marzban') {
-
-        $command = 'sudo -H -i /usr/local/bin/marzban update 2>&1';
-
-        exec($command, $output, $return_var);
-        
-        $outputText = implode("\n", $output);
-        
-        file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Marzban update output:\n" . $outputText . "\n", FILE_APPEND);
-        
-
-    sendRequest('editMessageText', [
-        'chat_id' => $chatId,
-        'message_id' => $userState['message_id'],
-        'text' => 'This option is not available.' #$lang['marzban_update_success']
-    ]);
-
-    sendRequest('sendMessage', [
-        'chat_id' => $chatId,
-        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
-        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
-    ]);
-}
     if ($data === 'restart_marzban') {
 
     $command = 'sudo marzban restart > /dev/null 2>&1 &';
@@ -3224,20 +3022,20 @@ function handleCallbackQuery($callback_query) {
         'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
     ]);
 }
-    if (strpos($data, 'change_template') === 0) {
+if (strpos($data, 'change_template') === 0) {
 
-
-        sendRequest('editMessageText', [
-            'chat_id' => $chatId,
-            'message_id' => $userState['message_id'],
-            'text' => '🥺این بخش درحال حاضر غیرفعال میباشد.'
-        ]);
-        sendRequest('sendMessage', [
-            'chat_id' => $chatId,
-            'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
-            'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
-        ]);
+    sendRequest('editMessageText', [
+        'chat_id' => $chatId,
+        'message_id' => $userState['message_id'],
+        'text' => '🥺این بخش درحال حاضر غیرفعال میباشد.'
+    ]);
     
+    sendRequest('sendMessage', [
+        'chat_id' => $chatId,
+        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+        'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
+    ]);
+
     $templates = [
         [
             'image' => 'screenshot.jpg',
@@ -3252,16 +3050,13 @@ function handleCallbackQuery($callback_query) {
     $currentIndex = 0;
     $templateCount = count($templates);
 
-    setUserTemplateIndex($userId, $currentIndex);
-
-    sendRequest('sendPhoto', [
+   /* sendRequest('sendPhoto', [
         'chat_id' => $chatId,
         'photo' => $templates[$currentIndex]['image'],
         'caption' => sprintf($lang['template_caption'], $currentIndex + 1, $templateCount),
         'reply_markup' => json_encode(getTemplateMenuKeyboard($currentIndex, $templateCount, $userId))  
     ]);
-    
-
+    */
     return;
 }
 if (strpos($data, 'template_') === 0) {
@@ -3296,7 +3091,6 @@ if (strpos($data, 'template_') === 0) {
         return;
     }
 
-    setUserTemplateIndex($userId, $currentIndex);
     sendRequest('editMessageMedia', [
         'chat_id' => $chatId,
         'message_id' => $messageId,
@@ -3310,7 +3104,198 @@ if (strpos($data, 'template_') === 0) {
 
     return;
 }
+if (strpos($data, 'disable_users_') === 0) {
+    $adminId = str_replace('disable_users_', '', $data);
+    if (in_array($userId, $allowedUsers)) {
+        $stmt = $marzbanConn->prepare("UPDATE users SET status = 'disabled' WHERE admin_id = ? AND status = 'active'");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $stmt->close();
 
+        $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
+        $stmt->close();
+
+        $currentStatus['users'] = 'disabled';
+        $newStatus = json_encode($currentStatus);
+
+        $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
+        $stmt->bind_param("si", $newStatus, $adminId);
+        $stmt->execute();
+        $stmt->close();
+
+        $newKeyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => 'فعال کردن کاربران', 'callback_data' => "enable_users_{$adminId}"],
+                    ['text' => 'عوض کردن پسورد ادمین', 'callback_data' => "change_password_{$adminId}"]
+                ]
+            ]
+        ];
+
+        sendRequest('editMessageReplyMarkup', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'reply_markup' => json_encode($newKeyboard)
+        ]);
+
+        sendRequest('answerCallbackQuery', [
+            'callback_query_id' => $callbackId,
+            'text' => 'کاربران غیرفعال شدند.',
+            'show_alert' => true
+        ]);
+    }
+    return;
+}
+
+if (strpos($data, 'enable_users_') === 0) {
+    $adminId = str_replace('enable_users_', '', $data);
+    if (in_array($userId, $allowedUsers)) {
+        $stmt = $marzbanConn->prepare("UPDATE users SET status = 'active' WHERE admin_id = ? AND status = 'disabled'");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $stmt->close();
+
+        $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'disabled'];
+        $stmt->close();
+
+        $currentStatus['users'] = 'active';
+        $newStatus = json_encode($currentStatus);
+
+        $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
+        $stmt->bind_param("si", $newStatus, $adminId);
+        $stmt->execute();
+        $stmt->close();
+
+        $newKeyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => 'غیرفعال کردن کاربران', 'callback_data' => "disable_users_{$adminId}"],
+                    ['text' => 'عوض کردن پسورد ادمین', 'callback_data' => "change_password_{$adminId}"]
+                ]
+            ]
+        ];
+
+        sendRequest('editMessageReplyMarkup', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'reply_markup' => json_encode($newKeyboard)
+        ]);
+
+        sendRequest('answerCallbackQuery', [
+            'callback_query_id' => $callbackId,
+            'text' => 'کاربران فعال شدند.',
+            'show_alert' => true
+        ]);
+    }
+    return;
+}
+
+if (strpos($data, 'change_password_') === 0) {
+    $adminId = str_replace('change_password_', '', $data);
+    if (in_array($userId, $allowedUsers)) {
+        $newPassword = generateRandomPassword();
+        $hashedPassword = password_hash($newPassword, PASSWORD_BCRYPT);
+
+        $stmt = $marzbanConn->prepare("SELECT hashed_password FROM admins WHERE id = ?");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $stmt->bind_result($currentPassword);
+        $stmt->fetch();
+        $stmt->close();
+
+        $stmt = $botConn->prepare("UPDATE admin_settings SET hashed_password_before = ? WHERE admin_id = ?");
+        $stmt->bind_param("si", $currentPassword, $adminId);
+        $stmt->execute();
+        $stmt->close();
+
+        $stmt = $marzbanConn->prepare("UPDATE admins SET hashed_password = ? WHERE id = ?");
+        $stmt->bind_param("si", $hashedPassword, $adminId);
+        $stmt->execute();
+        $stmt->close();
+
+        $newKeyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => 'غیرفعال کردن کاربران', 'callback_data' => "disable_users_{$adminId}"],
+                    ['text' => 'بازگرداندن پسورد ادمین', 'callback_data' => "restore_password_{$adminId}"]
+                ]
+            ]
+        ];
+
+        sendRequest('editMessageReplyMarkup', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'reply_markup' => json_encode($newKeyboard)
+        ]);
+
+        sendRequest('answerCallbackQuery', [
+            'callback_query_id' => $callbackId,
+            'text' => "پسورد ادمین عوض شد: $newPassword",
+            'show_alert' => true
+        ]);
+    }
+    return;
+}
+
+if (strpos($data, 'restore_password_') === 0) {
+    $adminId = str_replace('restore_password_', '', $data);
+    if (in_array($userId, $allowedUsers)) {
+        $stmt = $botConn->prepare("SELECT hashed_password_before FROM admin_settings WHERE admin_id = ?");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $stmt->bind_result($hashedPasswordBefore);
+        $stmt->fetch();
+        $stmt->close();
+
+        if ($hashedPasswordBefore) {
+            $stmt = $marzbanConn->prepare("UPDATE admins SET hashed_password = ? WHERE id = ?");
+            $stmt->bind_param("si", $hashedPasswordBefore, $adminId);
+            $stmt->execute();
+            $stmt->close();
+
+            $stmt = $botConn->prepare("UPDATE admin_settings SET hashed_password_before = NULL WHERE admin_id = ?");
+            $stmt->bind_param("i", $adminId);
+            $stmt->execute();
+            $stmt->close();
+
+            $newKeyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => 'غیرفعال کردن کاربران', 'callback_data' => "disable_users_{$adminId}"],
+                        ['text' => 'عوض کردن پسورد ادمین', 'callback_data' => "change_password_{$adminId}"]
+                    ]
+                ]
+            ];
+
+            sendRequest('editMessageReplyMarkup', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'reply_markup' => json_encode($newKeyboard)
+            ]);
+
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => 'پسورد ادمین به حالت قبلی برگشت.',
+                'show_alert' => true
+            ]);
+        } else {
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => 'پسورد قبلی موجود نیست.',
+                'show_alert' => true
+            ]);
+        }
+    }
+    return;
+}
     
 }
 
@@ -3385,7 +3370,11 @@ if (strpos($data, 'template_') === 0) {
                     $adminId = $userState['admin_id'];
 
     
-                    $sql = "UPDATE users SET data_limit = data_limit - (1073741824 * $dataLimit) WHERE data_limit IS NOT NULL AND admin_id IN ($adminId)";
+                    $sql = "UPDATE users 
+                            SET data_limit = GREATEST(0, data_limit - (1073741824 * $dataLimit)) 
+                            WHERE data_limit IS NOT NULL 
+                            AND admin_id IN ($adminId)";
+
                     if ($marzbanConn->query($sql) === TRUE) {
                     $adminId = $userState['admin_id'];
                     $promptMessageId = $userState['message_id'];
