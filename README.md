@@ -29,7 +29,7 @@ During the installation process, **port 80** will be temporarily opened to obtai
 - ✔️ **View Admin Information by Admin and Bot Manager**
 - ✔️ **Deactivate Admin Users**
 - ✔️ **Save deleted volume by admin**
-- ✔️ **Admin restrictions**(creation, editing, recovery, reset usage, etc.)
+- ✔️ **Admin restrictions**(creation, editing, rekove, reset usage, etc.)
 
 ## Screenshots
 
