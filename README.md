@@ -34,9 +34,9 @@ During the installation process, **port 80** will be temporarily opened to obtai
 Here is a screenshot of Marzhelp in action:
 
 <p align="center">
-  <img src="https://github.com/ppouria/marzhelp/blob/main/Screenshot.png" alt="Screenshot" width="300"/>
-  <img src="https://github.com/ppouria/marzhelp/blob/main/screenshot2.jpg" alt="Screenshot" width="300"/>
-  <img src="https://github.com/ppouria/marzhelp/blob/main/screenshot3.png" alt="Screenshot" width="300"/>
+  <img src="https://github.com/ppouria/marzhelp/blob/main/screenshots/Screenshot.png" alt="Screenshot" width="300"/>
+  <img src="https://github.com/ppouria/marzhelp/blob/main/screenshots/screenshot2.jpg" alt="Screenshot" width="300"/>
+  <img src="https://github.com/ppouria/marzhelp/blob/main/screenshots/screenshot3.png" alt="Screenshot" width="300"/>
 </p>
 
 ## Donations
