@@ -42,7 +42,8 @@ Here is a screenshot of Marzhelp in action:
 ## Donations
 If you like Marzhelp and would like to support further development, consider making a donation:
 
-- **Tether (TRX/USDT):** `TGftLESDAeRncE7yMAHrTUCsixuUwPc6qp`
+- **TRX (TRX):** `TGftLESDAeRncE7yMAHrTUCsixuUwPc6qp`
+- **Tether (USDT bep20):** `0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D`
 - **Bitcoin:** `bc1qnmuuxraew34g806ewkepxrhgln4ult6z5vkj9l`
 - **ETH, BNB, MATIC network (ERC20, BEP20):** `0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D`
 - **TON:** `UQDNpA3SlFMorlrCJJcqQjix93ijJfhAwIxnbTwZTLiHZ0Xa`
