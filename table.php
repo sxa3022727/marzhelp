@@ -100,26 +100,37 @@ function checkAndCreateTablesAndColumns($botConn) {
 
     $columnStatusType = $botConn->query("SHOW COLUMNS FROM `admin_settings` LIKE 'status'")->fetch_assoc();
     if ($columnStatusType && strpos($columnStatusType['Type'], 'json') === false) {
+        $cleanupQuery = "UPDATE `admin_settings` SET `status` = NULL WHERE `status` IS NOT NULL AND JSON_VALID(`status`) = 0;";
+        if ($botConn->query($cleanupQuery) === TRUE) {
+            echo "Invalid status values cleaned up.\n";
+        } else {
+            echo "Error cleaning up invalid status values: " . $botConn->error . "\n";
+            $hasCriticalError = true;
+        }
+
         $alterStatusQuery = "ALTER TABLE `admin_settings` MODIFY `status` JSON;";
         if ($botConn->query($alterStatusQuery) === TRUE) {
             echo "Column 'status' in 'admin_settings' modified to JSON successfully.\n";
-    
+
             $defaultStatus = '{"data": "active", "time": "active", "users": "active"}';
             $setDefaultQuery = "ALTER TABLE `admin_settings` ALTER COLUMN `status` SET DEFAULT '$defaultStatus';";
             if ($botConn->query($setDefaultQuery) === TRUE) {
                 echo "Default value for 'status' column set successfully.\n";
             } else {
                 echo "Error setting default value for 'status' column: " . $botConn->error . "\n";
+                $hasCriticalError = true;
             }
-    
-            $updateExistingQuery = "UPDATE `admin_settings` SET `status` = '$defaultStatus' WHERE `status` IS NULL OR `status` = '';";
+
+            $updateExistingQuery = "UPDATE `admin_settings` SET `status` = '$defaultStatus' WHERE `status` IS NULL;";
             if ($botConn->query($updateExistingQuery) === TRUE) {
                 echo "Existing records updated with default status.\n";
             } else {
                 echo "Error updating existing records: " . $botConn->error . "\n";
+                $hasCriticalError = true;
             }
         } else {
             echo "Error modifying 'status' column in 'admin_settings': " . $botConn->error . "\n";
+            $hasCriticalError = true;
         }
     }
 
