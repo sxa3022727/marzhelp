@@ -1,6 +1,7 @@
 <?php
 date_default_timezone_set('Asia/Tehran');
-require 'config.php';
+
+require '../config.php';
 
 class Database {
     private static $instances = [];
