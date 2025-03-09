@@ -1098,7 +1098,7 @@ class PanelManager {
 
 $dbMarzban = Database::getInstance($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName)->getConnection();
 $dbBot = Database::getInstance($botDbHost, $botDbUser, $botDbPass, $botDbName)->getConnection();
-$languages = include 'languages.php';
+$languages = require __DIR__ . '/../languages.php';
 $notification = new Notification($apiURL, $dbBot);
 $panelManager = new PanelManager($dbMarzban, $dbBot, $notification, $languages, $allowedUsers);
 
