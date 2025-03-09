@@ -81,7 +81,7 @@ function checkAndCreateTablesAndColumns($botConn) {
         'last_traffic_notification' => "ALTER TABLE `admin_settings` ADD `last_traffic_notification` int DEFAULT NULL;",
         'last_traffic_notify' => "ALTER TABLE `admin_settings` ADD `last_traffic_notify` int DEFAULT NULL;",
         'used_traffic' => "ALTER TABLE `admin_settings` ADD `used_traffic` bigint DEFAULT 0;",
-        'calculate_volume' => "ALTER TABLE `admin_settings` ADD `calculate_volume` varchar(20) AS (used_traffic);"
+        'calculate_volume' => "ALTER TABLE `admin_settings` ADD `calculate_volume` varchar(20) DEFAULT (used_traffic);"
     ];
     $hasCriticalError = $hasCriticalError || checkAndAddColumns($botConn, 'admin_settings', $columnsAdminSettings);
 
