@@ -16,7 +16,7 @@ function checkAndCreateTablesAndColumns($botConn) {
         `total_traffic` bigint DEFAULT NULL,
         `used_traffic` bigint DEFAULT 0,
         `expiry_date` date DEFAULT NULL,
-        `status` JSON DEFAULT NULL,
+        `status` JSON, 
         `user_limit` bigint DEFAULT NULL,
         `hashed_password_before` varchar(255) DEFAULT NULL,
         `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -111,25 +111,40 @@ function checkAndCreateTablesAndColumns($botConn) {
             echo "Error cleaning up invalid status values: " . $botConn->error . "\n";
             $hasCriticalError = true;
         }
-
+    
         $alterStatusQuery = "ALTER TABLE `admin_settings` MODIFY `status` JSON;";
         if ($botConn->query($alterStatusQuery) === TRUE) {
             echo "Column 'status' in 'admin_settings' modified to JSON successfully.\n";
-
+    
             $defaultStatus = '{"data": "active", "time": "active", "users": "active"}';
-            $setDefaultQuery = "ALTER TABLE `admin_settings` ALTER COLUMN `status` SET DEFAULT '$defaultStatus';";
-            if ($botConn->query($setDefaultQuery) === TRUE) {
-                echo "Default value for 'status' column set successfully.\n";
-            } else {
-                echo "Error setting default value for 'status' column: " . $botConn->error . "\n";
-                $hasCriticalError = true;
-            }
-
             $updateExistingQuery = "UPDATE `admin_settings` SET `status` = '$defaultStatus' WHERE `status` IS NULL;";
             if ($botConn->query($updateExistingQuery) === TRUE) {
                 echo "Existing records updated with default status.\n";
             } else {
                 echo "Error updating existing records: " . $botConn->error . "\n";
+                $hasCriticalError = true;
+            }
+    
+            $triggerQuery = "
+                DROP TRIGGER IF EXISTS set_default_status;
+                CREATE TRIGGER set_default_status
+                BEFORE INSERT ON admin_settings
+                FOR EACH ROW
+                BEGIN
+                    IF NEW.status IS NULL THEN
+                        SET NEW.status = '{\"data\": \"active\", \"time\": \"active\", \"users\": \"active\"}';
+                    END IF;
+                END;
+            ";
+            if ($botConn->multi_query($triggerQuery)) {
+                echo "Trigger 'set_default_status' created successfully.\n";
+                do {
+                    if ($result = $botConn->store_result()) {
+                        $result->free();
+                    }
+                } while ($botConn->next_result());
+            } else {
+                echo "Error creating trigger 'set_default_status': " . $botConn->error . "\n";
                 $hasCriticalError = true;
             }
         } else {
@@ -158,7 +173,7 @@ function checkAndAddColumns($botConn, $tableName, $columns) {
 
     return $hasCriticalError;
 }
- 
+
 function setupCronJob($scriptPath) {
     $cronJob = "* * * * * /usr/bin/php $scriptPath";
     $oldCronJob = "* * * * * /usr/bin/php /var/www/html/marzhelp/cron.php";
