@@ -14,7 +14,7 @@ if (php_sapi_name() !== 'cli') {
 
 require 'config.php';
 
-$latestVersion = 'v0.2.3';
+$latestVersion = 'v0.2.4';
 
 $botConn = new mysqli($botDbHost, $botDbUser, $botDbPass, $botDbName);
 if ($botConn->connect_error) {
@@ -31,6 +31,10 @@ if ($marzbanConn->connect_error) {
     exit;
 }
 $marzbanConn->set_charset("utf8");
+
+function logDebug($message) {
+    file_put_contents('debug.log', date('[Y-m-d H:i:s] ') . $message . PHP_EOL, FILE_APPEND);
+}
 
 function getLang($userId) {
     global $botConn;
@@ -707,6 +711,67 @@ function getCalculateVolumeKeyboard($adminId, $userId) {
     ];
 }
 
+function manageEventBasedOnLimits($interval = 1) {
+    global $marzbanConn;
+    logDebug("manageEventBasedOnLimits called with interval: $interval");
+
+    $eventName = 'manage_inbound_limits';
+    $countResult = $marzbanConn->query("SELECT COUNT(*) as count FROM marzhelp_limits");
+    if (!$countResult) {
+        logDebug("Error in COUNT query: " . $marzbanConn->error);
+        return;
+    }
+    $count = $countResult->fetch_assoc()['count'];
+
+    if ($count > 0) {
+        $marzbanConn->query("DROP EVENT IF EXISTS `$eventName`");
+        if ($marzbanConn->error) {
+            logDebug("Error dropping event: " . $marzbanConn->error);
+            return;
+        }
+
+        $createEvent = $marzbanConn->query("
+            CREATE EVENT `$eventName`
+            ON SCHEDULE EVERY $interval SECOND
+            DO
+            BEGIN
+                INSERT INTO exclude_inbounds_association (proxy_id, inbound_tag)
+                SELECT p.id, ml.inbound_tag
+                FROM marzhelp_limits ml
+                INNER JOIN admins a ON ml.admin_id = a.id
+                INNER JOIN users u ON u.admin_id = a.id
+                INNER JOIN proxies p ON p.user_id = u.id
+                LEFT JOIN exclude_inbounds_association eia 
+                    ON eia.proxy_id = p.id AND eia.inbound_tag = ml.inbound_tag
+                WHERE ml.type = 'exclude'
+                AND eia.proxy_id IS NULL;
+
+                INSERT INTO exclude_inbounds_association (proxy_id, inbound_tag)
+                SELECT p.id, ml.inbound_tag
+                FROM marzhelp_limits ml
+                INNER JOIN admins a ON a.id != ml.admin_id
+                INNER JOIN users u ON u.admin_id = a.id
+                INNER JOIN proxies p ON p.user_id = u.id
+                LEFT JOIN exclude_inbounds_association eia 
+                    ON eia.proxy_id = p.id AND eia.inbound_tag = ml.inbound_tag
+                WHERE ml.type = 'dedicated'
+                AND eia.proxy_id IS NULL;
+            END;
+        ");
+        if ($marzbanConn->error) {
+            logDebug("Error creating event: " . $marzbanConn->error);
+            return;
+        }
+    } else {
+        $marzbanConn->query("DROP EVENT IF EXISTS `$eventName`");
+        if ($marzbanConn->error) {
+            logDebug("Error dropping event when count=0: " . $marzbanConn->error);
+            return;
+        }
+    }
+    logDebug("manageEventBasedOnLimits completed");
+}
+
 function getAdminInfo($adminId) {
     global $marzbanConn, $botConn;
 
@@ -1088,9 +1153,68 @@ function handleCallbackQuery($callback_query) {
     }
     if (strpos($data, 'set_user_limit:') === 0) {
         $adminId = intval(substr($data, strlen('set_user_limit:')));
+        
+        $keyboard = [
+            [
+                ['text' => '10', 'callback_data' => "set_user_limit_value:$adminId:10"],
+                ['text' => '20', 'callback_data' => "set_user_limit_value:$adminId:20"],
+                ['text' => '50', 'callback_data' => "set_user_limit_value:$adminId:50"]
+            ],
+            [
+                ['text' => '100', 'callback_data' => "set_user_limit_value:$adminId:100"],
+                ['text' => '200', 'callback_data' => "set_user_limit_value:$adminId:200"],
+                ['text' => '300', 'callback_data' => "set_user_limit_value:$adminId:300"]
+            ],
+            [
+                ['text' => $lang['set_custom_limit'], 'callback_data' => "custom_set_user_limit:$adminId"]
+            ],
+            [
+                ['text' =>  $lang['back'], 'callback_data' => 'select_admin:' . $adminId]
+            ]
+        ];
+        
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['select_user_limit'] ?? 'لطفاً محدودیت کاربر را انتخاب کنید:',
+            'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
+        ]);
+        return;
+    }
     
+    if (strpos($data, 'set_user_limit_value:') === 0) {
+        list($action, $adminId, $userLimit) = explode(':', $data);
+        $adminId = intval($adminId);
+        $userLimit = intval($userLimit);
+        
+        $stmt = $botConn->prepare("INSERT INTO admin_settings (admin_id, user_limit) VALUES (?, ?) ON DUPLICATE KEY UPDATE user_limit = ?");
+        $stmt->bind_param("iii", $adminId, $userLimit, $userLimit);
+        $stmt->execute();
+        $stmt->close();
+        
+        $adminInfo = getAdminInfo($adminId, $userId);
+        $adminInfo['adminId'] = $adminId;
+        $infoText = getAdminInfoText($adminInfo, $userId);
+        
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['setUserLimit_success']
+        ]);
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $infoText,
+            'parse_mode' => 'Markdown',
+            'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status'])
+        ]);
+        return;
+    }
+    
+    if (strpos($data, 'custom_set_user_limit:') === 0) {
+        $adminId = intval(substr($data, strlen('custom_set_user_limit:')));
+        
         handleUserState('set', $userId, 'set_user_limit', $adminId);
-    
+        
         sendRequest('editMessageText', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
@@ -1229,14 +1353,12 @@ function handleCallbackQuery($callback_query) {
             CREATE TRIGGER `$triggerName` BEFORE UPDATE ON `users`
             FOR EACH ROW
             BEGIN
-                IF NEW.data_limit IS NULL THEN
-                    IF NEW.admin_id IN ($adminIdsStr) THEN 
-                        SIGNAL SQLSTATE '45000' 
-                        SET MESSAGE_TEXT = 'Admins with these IDs cannot create users with unlimited traffic.';
-                    END IF;
+                IF NEW.data_limit IS NULL AND NEW.admin_id IN ($adminIdsStr) THEN
+                    SIGNAL SQLSTATE '45000' 
+                    SET MESSAGE_TEXT = 'Admins with these IDs cannot create users with unlimited traffic.';
                 END IF;
             END;
-            ";
+        ";
     
             $marzbanConn->query("DROP TRIGGER IF EXISTS `$triggerName`");
             $marzbanConn->query($triggerBody);
@@ -2213,71 +2335,12 @@ function handleCallbackQuery($callback_query) {
         return;
     }
     if (strpos($data, 'limit_inbounds:') === 0) {
+        logDebug("Starting limit_inbounds with data: $data");
         $adminId = intval(substr($data, strlen('limit_inbounds:')));
         $adminInfo = getAdminInfo($adminId, $userId);
     
         if (!$adminInfo || !isset($adminInfo['username'])) {
-            sendRequest('answerCallbackQuery', [
-                'callback_query_id' => $callbackId, 
-                'text' => $lang['invalid_operation'],
-                'show_alert' => false
-            ]);
-            return;
-        }
-    
-        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
-        $inbounds = [];
-        while ($row = $inboundsResult->fetch_assoc()) {
-            $inbounds[] = $row['tag'];
-        }
-    
-        $eventName = "limit_inbound_for_admin_" . $adminInfo['username']; 
-        $selectedInbounds = [];
-    
-        $eventExistsResult = $marzbanConn->query("SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = DATABASE() AND EVENT_NAME = '$eventName'");
-        if ($eventExistsResult && $eventExistsResult->num_rows > 0) {
-            $eventResult = $marzbanConn->query("SHOW CREATE EVENT `$eventName`");
-            if ($eventResult && $eventResult->num_rows > 0) {
-                $eventRow = $eventResult->fetch_assoc();
-                $eventBody = $eventRow['Create Event'];
-                preg_match_all("/SELECT '([^']+)' AS inbound_tag/", $eventBody, $matches);
-                if (isset($matches[1])) {
-                    $selectedInbounds = $matches[1];
-                }
-            }
-        } else {
-            $selectedInbounds = [];
-        }
-    
-        $keyboard = [];
-        foreach ($inbounds as $inbound) {
-            $isSelected = in_array($inbound, $selectedInbounds);
-            $emoji = $isSelected ? '✅' : '';
-            $keyboard[] = [
-                'text' => $emoji . $inbound,
-                'callback_data' => 'toggle_inbound:' . $adminId . ':' . $inbound
-            ];
-        }
-    
-        $keyboard = array_chunk($keyboard, 2);
-        $keyboard[] = [
-            ['text' => $lang['next_step_button'], 'callback_data' => 'confirm_inbounds:' . $adminId],
-            ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
-        ];
-    
-        sendRequest('editMessageText', [
-            'chat_id' => $chatId,
-            'message_id' => $messageId,
-            'text' => $lang['limitInbounds_info'],
-            'reply_markup' => ['inline_keyboard' => $keyboard]
-        ]);
-        return;
-    }
-    if (strpos($data, 'toggle_inbound:') === 0) {
-        list(, $adminId, $inboundTag) = explode(':', $data);
-    
-        $adminInfo = getAdminInfo($adminId, $userId);
-        if (!$adminInfo || !isset($adminInfo['username'])) {
+            logDebug("Invalid admin info for adminId: $adminId");
             sendRequest('answerCallbackQuery', [
                 'callback_query_id' => $callbackId,
                 'text' => $lang['invalid_operation'],
@@ -2286,63 +2349,159 @@ function handleCallbackQuery($callback_query) {
             return;
         }
     
-        $eventName = "limit_inbound_for_admin_" . $adminInfo['username'];
+        sendRequest('deleteMessage', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId
+        ]);
     
-        $eventExistsResult = $marzbanConn->query("SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = DATABASE() AND EVENT_NAME = '$eventName'");
-        $selectedInbounds = [];
-        if ($eventExistsResult && $eventExistsResult->num_rows > 0) {
-            $eventResult = $marzbanConn->query("SHOW CREATE EVENT `$eventName`");
-            if ($eventResult && $eventResult->num_rows > 0) {
-                $eventRow = $eventResult->fetch_assoc();
-                $eventBody = $eventRow['Create Event'];
-                preg_match_all("/SELECT '([^']+)' AS inbound_tag/", $eventBody, $matches);
-                $selectedInbounds = isset($matches[1]) ? $matches[1] : [];
+        $cacheFile = 'ad_cache.txt';
+        $cacheTimeFile = 'ad_cache_time.txt';
+        $cacheLifetime = 24 * 60 * 60; 
+        $adText = null;
     
-                if (in_array($inboundTag, $selectedInbounds)) {
-                    $selectedInbounds = array_diff($selectedInbounds, [$inboundTag]);
-                } else {
-                    $selectedInbounds[] = $inboundTag;
-                }
-            } else {
-                $selectedInbounds = [$inboundTag];
+        if (file_exists($cacheFile) && file_exists($cacheTimeFile)) {
+            $cacheTime = (int) file_get_contents($cacheTimeFile);
+            if (time() - $cacheTime < $cacheLifetime) {
+                $adText = file_get_contents($cacheFile);
+                logDebug("Ad text loaded from cache: " . $adText);
             }
-        } else {
-            $selectedInbounds = [$inboundTag];
         }
     
-        if (empty($selectedInbounds)) {
-            $marzbanConn->query("DROP EVENT IF EXISTS `$eventName`");
-        } else {
-            $adminUsername = $marzbanConn->real_escape_string($adminInfo['username']);
-            $inboundSelects = array_map(function ($tag) {
-                return "SELECT '$tag' AS inbound_tag";
-            }, $selectedInbounds);
-            $inboundUnion = implode(" UNION ALL ", $inboundSelects);
-    
-            $eventBody = "
-                INSERT INTO exclude_inbounds_association (proxy_id, inbound_tag)
-                SELECT proxies.id, inbound_tag_mapping.inbound_tag
-                FROM users
-                INNER JOIN admins ON users.admin_id = admins.id
-                INNER JOIN proxies ON proxies.user_id = users.id
-                CROSS JOIN (
-                    $inboundUnion
-                ) AS inbound_tag_mapping
-                LEFT JOIN exclude_inbounds_association eia 
-                  ON eia.proxy_id = proxies.id AND eia.inbound_tag = inbound_tag_mapping.inbound_tag
-                WHERE admins.username = '$adminUsername'
-                AND eia.proxy_id IS NULL;
-            ";
-    
-            $marzbanConn->query("DROP EVENT IF EXISTS `$eventName`");
-    
-            $marzbanConn->query("
-                CREATE EVENT `$eventName`
-                ON SCHEDULE EVERY 1 SECOND
-                DO
-                $eventBody
-            ");
+        if ($adText === null) {
+            $rawUrl = "https://raw.githubusercontent.com/ppouria/marzhelp/dev/ad_text.txt"; 
+            $response = @file_get_contents($rawUrl);
+            if ($response !== false) {
+                $adText = $response;
+                file_put_contents($cacheFile, $adText);
+                file_put_contents($cacheTimeFile, time());
+                logDebug("Ad text fetched from GitHub and cached: " . $adText);
+            }
         }
+    
+        if ($adText !== null) {
+            $adResult = sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $adText
+            ]);
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => 'توجه! پیام بالا دارای محتوای اسپانسری است. دسترسی شما به بخش محدودیت‌ها پس از گذشت ۵ ثانیه امکان‌پذیر خواهد بود.'
+            ]);
+            sleep(5);
+        } else {
+            logDebug("Failed to fetch ad text from GitHub, skipping sponsor message");
+        }
+    
+        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
+        if (!$inboundsResult) {
+            logDebug("Error in query SELECT tag FROM inbounds: " . $marzbanConn->error);
+            return;
+        }
+        $inbounds = [];
+        while ($row = $inboundsResult->fetch_assoc()) {
+            $inbounds[] = $row['tag'];
+        }
+        logDebug("Fetched inbounds: " . json_encode($inbounds));
+    
+        $limitsResult = $marzbanConn->query("SELECT type, inbound_tag FROM marzhelp_limits WHERE admin_id = $adminId");
+        if (!$limitsResult) {
+            logDebug("Error in query SELECT from marzhelp_limits: " . $marzbanConn->error);
+            return;
+        }
+        $limits = [];
+        while ($row = $limitsResult->fetch_assoc()) {
+            $limits[$row['inbound_tag']] = $row['type'];
+        }
+        logDebug("Fetched limits: " . json_encode($limits));
+    
+        $inboundButtons = [];
+        foreach ($inbounds as $inbound) {
+            $type = isset($limits[$inbound]) ? $limits[$inbound] : null;
+            $emoji = $type == 'exclude' ? '🚫' : ($type == 'dedicated' ? '🔒' : '');
+            $inboundButtons[] = [
+                'text' => $emoji . $inbound,
+                'callback_data' => 'toggle_inbound:' . $adminId . ':' . $inbound
+            ];
+        }
+        $inboundRows = array_chunk($inboundButtons, 2);
+    
+        $keyboard = array_merge(
+            $inboundRows,
+            [
+                [
+                    ['text' => $lang['set_event_time'], 'callback_data' => 'set_event_time:' . $adminId]
+                ],
+                [
+                    ['text' => $lang['next_step_button'], 'callback_data' => 'confirm_inbounds_limit:' . $adminId],
+                    ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
+                ]
+            ]
+        );
+    
+        logDebug("Generated keyboard: " . json_encode($keyboard));
+
+        $result = sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            #'message_id' => $adMessageId,
+            'text' => $lang['limitInbounds_info'],
+            'reply_markup' => ['inline_keyboard' => $keyboard]
+        ]);
+        logDebug("sendRequest result for limit_inbounds: " . json_encode($result));
+        return;
+    }
+    
+    if (strpos($data, 'set_event_time:') === 0) {
+        logDebug("Setting event time with data: $data");
+        $adminId = intval(substr($data, strlen('set_event_time:')));
+    
+        $eventName = 'manage_inbound_limits';
+        $eventResult = $marzbanConn->query("SHOW CREATE EVENT `$eventName`");
+        $currentInterval = 1;
+        if ($eventResult && $eventResult->num_rows > 0) {
+            $eventRow = $eventResult->fetch_assoc();
+            $eventBody = $eventRow['Create Event'];
+            preg_match("/EVERY (\d+) SECOND/", $eventBody, $matches);
+            if (isset($matches[1])) {
+                $currentInterval = intval($matches[1]);
+            }
+        }
+    
+        $intervals = [1, 3, 5, 10, 30, 60];
+        $intervalButtons = [];
+        foreach ($intervals as $interval) {
+            $emoji = $interval == $currentInterval ? '✅' : '';
+            $intervalButtons[] = [
+                'text' => $emoji . $interval . ' ثانیه',
+                'callback_data' => 'set_interval:' . $adminId . ':' . $interval
+            ];
+        }
+        $intervalRows = array_chunk($intervalButtons, 2);
+    
+        $keyboard = array_merge(
+            $intervalRows,
+            [
+                [
+                    ['text' => $lang['back'], 'callback_data' => 'limit_inbounds:' . $adminId]
+                ]
+            ]
+        );
+    
+        $result = sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['select_event_time'],
+            'reply_markup' => ['inline_keyboard' => $keyboard]
+        ]);
+        logDebug("sendRequest result for set_event_time: " . json_encode($result));
+        return;
+    }
+    
+    if (strpos($data, 'set_interval:') === 0) {
+        logDebug("Setting interval with data: $data");
+        list(, $adminId, $interval) = explode(':', $data);
+        $interval = intval($interval);
+    
+        manageEventBasedOnLimits($interval);
     
         $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
         $inbounds = [];
@@ -2350,26 +2509,142 @@ function handleCallbackQuery($callback_query) {
             $inbounds[] = $row['tag'];
         }
     
-        $keyboard = [];
+        $limitsResult = $marzbanConn->query("SELECT type, inbound_tag FROM marzhelp_limits WHERE admin_id = $adminId");
+        $limits = [];
+        while ($row = $limitsResult->fetch_assoc()) {
+            $limits[$row['inbound_tag']] = $row['type'];
+        }
+    
+        $inboundButtons = [];
         foreach ($inbounds as $inbound) {
-            $isSelected = in_array($inbound, $selectedInbounds);
-            $emoji = $isSelected ? '✅' : '';
-            $keyboard[] = [
+            $type = isset($limits[$inbound]) ? $limits[$inbound] : null;
+            $emoji = $type == 'exclude' ? '🚫' : ($type == 'dedicated' ? '🔒' : '');
+            $inboundButtons[] = [
                 'text' => $emoji . $inbound,
                 'callback_data' => 'toggle_inbound:' . $adminId . ':' . $inbound
             ];
         }
+        $inboundRows = array_chunk($inboundButtons, 2);
     
-        $keyboard = array_chunk($keyboard, 2);
-        $keyboard[] = [
-            ['text' => $lang['next_step_button'], 'callback_data' => 'confirm_inbounds:' . $adminId],
-            ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
-        ];
+        $keyboard = array_merge(
+            $inboundRows,
+            [
+                [
+                    ['text' => $lang['set_event_time'], 'callback_data' => 'set_event_time:' . $adminId]
+                ],
+                [
+                    ['text' => $lang['next_step_button'], 'callback_data' => 'confirm_inbounds_limit:' . $adminId],
+                    ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
+                ]
+            ]
+        );
     
-        sendRequest('editMessageReplyMarkup', [
+        $result = sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['limitInbounds_info'],
+            'reply_markup' => ['inline_keyboard' => $keyboard]
+        ]);
+    
+        sendRequest('answerCallbackQuery', [
+            'callback_query_id' => $callbackId,
+            'text' => $lang['event_time_set'],
+            'show_alert' => true
+        ]);
+        return;
+    }
+    
+    if (strpos($data, 'toggle_inbound:') === 0) {
+        logDebug("Toggling inbound with data: $data");
+        list(, $adminId, $inboundTag) = explode(':', $data);
+    
+        $adminInfo = getAdminInfo($adminId, $userId);
+        if (!$adminInfo || !isset($adminInfo['username'])) {
+            logDebug("Invalid admin info for toggle_inbound");
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => $lang['invalid_operation'],
+                'show_alert' => false
+            ]);
+            return;
+        }
+    
+        $inboundTag = $marzbanConn->real_escape_string($inboundTag);
+    
+        $limitResult = $marzbanConn->query("SELECT type FROM marzhelp_limits WHERE admin_id = $adminId AND inbound_tag = '$inboundTag'");
+        if (!$limitResult) {
+            logDebug("Error in query SELECT from marzhelp_limits: " . $marzbanConn->error);
+            return;
+        }
+    
+        if ($limitResult->num_rows > 0) {
+            $currentType = $limitResult->fetch_assoc()['type'];
+            if ($currentType == 'exclude') {
+                $marzbanConn->query("UPDATE marzhelp_limits SET type = 'dedicated' WHERE admin_id = $adminId AND inbound_tag = '$inboundTag'");
+            } else {
+                $marzbanConn->query("DELETE FROM marzhelp_limits WHERE admin_id = $adminId AND inbound_tag = '$inboundTag'");
+            }
+        } else {
+            $marzbanConn->query("INSERT INTO marzhelp_limits (type, admin_id, inbound_tag) VALUES ('exclude', $adminId, '$inboundTag')");
+        }
+    
+        manageEventBasedOnLimits();
+    
+        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
+        $inbounds = [];
+        while ($row = $inboundsResult->fetch_assoc()) {
+            $inbounds[] = $row['tag'];
+        }
+    
+        $limitsResult = $marzbanConn->query("SELECT type, inbound_tag FROM marzhelp_limits WHERE admin_id = $adminId");
+        $limits = [];
+        while ($row = $limitsResult->fetch_assoc()) {
+            $limits[$row['inbound_tag']] = $row['type'];
+        }
+    
+        $inboundButtons = [];
+        foreach ($inbounds as $inbound) {
+            $type = isset($limits[$inbound]) ? $limits[$inbound] : null;
+            $emoji = $type == 'exclude' ? '🚫' : ($type == 'dedicated' ? '🔒' : '');
+            $inboundButtons[] = [
+                'text' => $emoji . $inbound,
+                'callback_data' => 'toggle_inbound:' . $adminId . ':' . $inbound
+            ];
+        }
+        $inboundRows = array_chunk($inboundButtons, 2);
+    
+        $keyboard = array_merge(
+            $inboundRows,
+            [
+                [
+                    ['text' => $lang['set_event_time'], 'callback_data' => 'set_event_time:' . $adminId]
+                ],
+                [
+                    ['text' => $lang['next_step_button'], 'callback_data' => 'confirm_inbounds_limit:' . $adminId],
+                    ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
+                ]
+            ]
+        );
+    
+        $result = sendRequest('editMessageReplyMarkup', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
             'reply_markup' => ['inline_keyboard' => $keyboard]
+        ]);
+        logDebug("sendRequest result for toggle_inbound: " . json_encode($result));
+        return;
+    }
+    
+    if (strpos($data, 'confirm_inbounds_limit:') === 0) {
+        logDebug("Confirming inbounds with data: $data");
+        $adminId = intval(substr($data, strlen('confirm_inbounds:')));
+    
+        manageEventBasedOnLimits();
+    
+        sendRequest('answerCallbackQuery', [
+            'callback_query_id' => $callbackId,
+            'text' => $lang['limits_updated'],
+            'show_alert' => true
         ]);
         return;
     }
@@ -2896,7 +3171,7 @@ function handleCallbackQuery($callback_query) {
             sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
-                'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+                'text' => $lang['settings_menu'] . "\n🟢 Bot version: " . $latestVersion,
                 'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
             ]);
         
@@ -2928,7 +3203,7 @@ function handleCallbackQuery($callback_query) {
                     ]);
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
-                        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+                        'text' => $lang['settings_menu'] . "\n🟢 Bot version: " . $latestVersion,
                         'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
                     ]);
                 } else {
@@ -2938,7 +3213,7 @@ function handleCallbackQuery($callback_query) {
                     ]);
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
-                        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+                        'text' => $lang['settings_menu'] . "\n🟢 Bot version: " . $latestVersion,
                         'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
                     ]);
                 }
@@ -3068,7 +3343,7 @@ function handleCallbackQuery($callback_query) {
         
             sendRequest('sendMessage', [
                 'chat_id' => $chatId,
-                'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+                'text' => $lang['settings_menu'] . "\n🟢 Bot version: " . $latestVersion,
                 'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
             ]);
         }
@@ -3092,7 +3367,7 @@ function handleCallbackQuery($callback_query) {
     
         sendRequest('sendMessage', [
             'chat_id' => $chatId,
-            'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+            'text' => $lang['settings_menu'] . "\n🟢 Bot version: " . $latestVersion,
             'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
         ]);
     }
@@ -3116,7 +3391,7 @@ function handleCallbackQuery($callback_query) {
 
     sendRequest('sendMessage', [
         'chat_id' => $chatId,
-        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+        'text' => $lang['settings_menu'] . "\n🟢 Bot version: " . $latestVersion,
         'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
     ]);
 }
@@ -3130,7 +3405,7 @@ if (strpos($data, 'change_template') === 0) {
     
     sendRequest('sendMessage', [
         'chat_id' => $chatId,
-        'text' => $lang['settings_menu'] . "\n 🟢 Bot version: " . $latestVersion,
+        'text' => $lang['settings_menu'] . "\n🟢 Bot version: " . $latestVersion,
         'reply_markup' => json_encode(getSettingsMenuKeyboard($userId))
     ]);
 
