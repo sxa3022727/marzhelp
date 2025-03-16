@@ -124,7 +124,10 @@ return [
         'selectMinInbound_prompt' => 'لطفاً حداقل یک اینباند را انتخاب کنید.',
         'setTraffic_prompt' => '♾️ لطفا حجم مورد نظر خود را بر واحد گیگابایت وارد نمایید:',
         'setExpiryDays_prompt' => '⏳ لطفا زمان مورد نظر خود را بر واحد روز وارد نمایید:',
-        'limitInbounds_info' => 'عملکرد این بخش بدینگونه‌ست که هر 1 ثانیه اینباند های انتخابی شما برای ادمین انتخابی غیرفعال میشود.' . "\n" . '⬇️ لطفا اینباند های مدنظرتان را انتخاب کنید سپس روی دکمه‌ی محدودسازی کلیک نمایید.',
+'limitInbounds_info' => 'اگر در حالت "🔒" باشد، اینباند انتخابی به ادمین تعیین‌شده اختصاص داده می‌شود.' . "\n" .  
+'اگر در حالت "🚫" باشد، ادمین شما امکان استفاده از اینباندهای انتخابی را نخواهد داشت.' . "\n" .  
+'اگر هیچ ایموجی برای اینباند وجود نداشته باشد، محدودیتی بر روی آن اعمال نشده است.' . "\n\n" .  
+'برای تغییر حالت یا حذف محدودیت، روی اینباند کلیک کنید—بصورت چرخشی تغییر خواهد کرد.',
         'reduceVolume_prompt' => 'لطفاً مقدار حجمی که می‌خواهید کم شود را بر حسب گیگابایت وارد نمایید:',
         'enterNewTelegramId_prompt' => '📱 لطفاً آیدی عددی تلگرام جدید را وارد کنید:',
         'setUserLimit_success' => "✅ تعداد کاربران مجاز برای ساخت به {userLimit} تنظیم شد.",
@@ -207,7 +210,12 @@ return [
         'created_traffic_button' => 'حجم ساخته شده',
         'password_already_changed' => 'پسورد قبلاً تغییر کرده است و امکان تغییر دوباره وجود ندارد.',
         'traffic_exhausted_notify' => 'Traffic for panel %s (ID: %d) has been exhausted.',
-        'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.'
+        'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.',
+        'set_custom_limit' => 'مقدار دلخواه',
+        'set_event_time' => 'تنظیم زمان ایونت',
+        'select_event_time' => 'زمان ایونت را انتخاب کنید',
+        'event_time_set' => 'تنظیم شد',
+        'limits_updated' => 'محدودیت‌ها به‌روزرسانی شدند',
     ],
     
     'en' => [ // english
@@ -335,7 +343,7 @@ return [
         'selectMinInbound_prompt' => 'Please select at least one inbound.',
         'setTraffic_prompt' => '♾️ Please enter your desired volume in gigabytes:',
         'setExpiryDays_prompt' => '⏳ Please enter your desired time in days:',
-        'limitInbounds_info' => 'The function of this section is such that every second, the selected inbounds for your chosen admin will be disabled.' . "\n" . '⬇️ Please select the inbounds you want and then click the Limit button.',
+        'limitInbounds_info' => 'If set to "🔒," the selected inbound will be assigned to the specified admin.' . "\n" . 'If set to "🚫," your admin will not be able to use the selected inbounds.' . "\n" . 'If no emoji is present for an inbound, no restrictions have been applied to it.' . "\n\n" . 'To change the mode or remove the restriction, click on the inbound—it will cycle through the options.',
         'reduceVolume_prompt' => 'Please enter the amount of volume you want to subtract in gigabytes:',
         'enterNewTelegramId_prompt' => '📱 Please enter the new numeric Telegram ID:',
         'setUserLimit_success' => "✅ The allowed number of users to create has been set to {userLimit}.",
@@ -418,7 +426,17 @@ return [
         'created_traffic_button' => 'Created Traffic',
         'password_already_changed' => 'The password has already been changed and cannot be changed again.',
         'traffic_exhausted_notify' => 'Traffic for panel %s (ID: %d) has been exhausted.',
-        'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.'
+        'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.',
+        'set_custom_limit' => 'Custom limit',
+        'display_only_button' => 'If set to "Exclusive," the selected inbound will be assigned to the specified admin.
+If set to "Disabled," your admin will not be able to use the selected inbounds.',        'exclude_type' => 'Exclude Inbound',
+        'dedicated_type' => 'Dedicated Inbound',
+        'limit_type' => 'Limit Type',
+        'change_limit_type' => 'Change Type',
+        'set_event_time' => 'Set Event Time',
+        'select_event_time' => 'Select event time',
+        'event_time_set' => 'Set successfully',
+        'limits_updated' => 'Limits updated',
         ],
             'ru' => [ // russia
         'main_menu' => '🏠 Главное меню',
@@ -544,7 +562,7 @@ return [
         'selectMinInbound_prompt' => 'Пожалуйста, выберите как минимум один инбаунд.',
         'setTraffic_prompt' => '♾️ Пожалуйста, введите желаемый трафик в гигабайтах:',
         'setExpiryDays_prompt' => '⏳ Пожалуйста, введите желаемое время в днях:',
-        'limitInbounds_info' => 'Функция этого раздела заключается в том, что каждую секунду выбранные вами инбаунды для выбранного админа будут отключаться.' . "\n" . '⬇️ Пожалуйста, выберите желаемые инбаунды и нажмите кнопку Ограничить.',
+        'limitInbounds_info' => 'If set to "🔒," the selected inbound will be assigned to the specified admin.' . "\n" . 'If set to "🚫," your admin will not be able to use the selected inbounds.' . "\n" . 'If no emoji is present for an inbound, no restrictions have been applied to it.' . "\n\n" . 'To change the mode or remove the restriction, click on the inbound—it will cycle through the options.',
         'reduceVolume_prompt' => 'Пожалуйста, введите трафик, который вы хотите уменьшить, в гигабайтах:',
         'enterNewTelegramId_prompt' => '📱 Пожалуйста, введите новый Telegram ID (числом):',
         'setUserLimit_success' => "✅ Максимальное количество пользователей для создания установлено на {userLimit}.",
@@ -627,6 +645,17 @@ return [
         'created_traffic_button' => 'Created Traffic',
         'password_already_changed' => 'The password has already been changed and cannot be changed again.',
         'traffic_exhausted_notify' => 'Traffic for panel %s (ID: %d) has been exhausted.',
-        'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.'
+        'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.',
+        'set_custom_limit' => 'Custom limit',
+        'display_only_button' => 'If set to "Exclusive," the selected inbound will be assigned to the specified admin.
+If set to "Disabled," your admin will not be able to use the selected inbounds.',
+        'exclude_type' => 'Exclude Inbound',
+        'dedicated_type' => 'Dedicated Inbound',
+        'limit_type' => 'Limit Type',
+        'change_limit_type' => 'Change Type',
+        'set_event_time' => 'Set Event Time',
+        'select_event_time' => 'Select event time',
+        'event_time_set' => 'Set successfully',
+        'limits_updated' => 'Limits updated',
     ]
 ];
