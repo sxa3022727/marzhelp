@@ -8,6 +8,13 @@ if ($botConn->connect_error) {
 }
 $botConn->set_charset("utf8");
 
+$marzbanConn = new mysqli($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName);
+if ($marzbanConn->connect_error) {
+    file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - VPN DB connection failed: " . $marzbanConn->connect_error . "\n", FILE_APPEND);
+    exit;
+}
+$marzbanConn->set_charset("utf8");
+
 function checkAndCreateTablesAndColumns($botConn) {
     $hasCriticalError = false;
 
@@ -23,7 +30,7 @@ function checkAndCreateTablesAndColumns($botConn) {
         `last_expiry_notification` timestamp NULL DEFAULT NULL,
         `last_traffic_notification` int DEFAULT NULL,
         `last_traffic_notify` int DEFAULT NULL,
-        `calculate_volume` varchar(20) DEFAULT 'used_traffic',
+        `calculate_volume` varchar(50) DEFAULT 'used_traffic',
         PRIMARY KEY (`admin_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;";
     
@@ -51,7 +58,7 @@ function checkAndCreateTablesAndColumns($botConn) {
     }
 
     $tableUserTemporaries = "CREATE TABLE IF NOT EXISTS `user_temporaries` (
-        `user_id` int NOT NULL,
+        `user_id` BIGINT NOT NULL,
         `user_key` varchar(50) NOT NULL,
         `value` text,
         PRIMARY KEY (`user_id`, `user_key`)
@@ -81,7 +88,7 @@ function checkAndCreateTablesAndColumns($botConn) {
         'last_traffic_notification' => "ALTER TABLE `admin_settings` ADD `last_traffic_notification` int DEFAULT NULL;",
         'last_traffic_notify' => "ALTER TABLE `admin_settings` ADD `last_traffic_notify` int DEFAULT NULL;",
         'used_traffic' => "ALTER TABLE `admin_settings` ADD `used_traffic` bigint DEFAULT 0;",
-        'calculate_volume' => "ALTER TABLE `admin_settings` ADD `calculate_volume` VARCHAR(20) DEFAULT 'used_traffic';"
+        'calculate_volume' => "ALTER TABLE `admin_settings` ADD `calculate_volume` VARCHAR(50) DEFAULT 'used_traffic';"
     ];
     $hasCriticalError = $hasCriticalError || checkAndAddColumns($botConn, 'admin_settings', $columnsAdminSettings);
 
@@ -202,9 +209,40 @@ function setupCronJob($scriptPath) {
 
 $hasCriticalError = checkAndCreateTablesAndColumns($botConn);
 
+$createMarzhelpLimits = "
+CREATE TABLE IF NOT EXISTS `marzhelp_limits` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `type` enum('exclude','dedicated') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `admin_id` int NOT NULL,
+  `inbound_tag` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_limit` (`type`,`admin_id`,`inbound_tag`),
+  KEY `admin_id` (`admin_id`),
+  CONSTRAINT `marzhelp_limits_ibfk_1` FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+";
+
+if (!$marzbanConn->query($createMarzhelpLimits)) {
+    echo "Error creating table `marzhelp_limits`: " . $marzbanConn->error . "\n";
+    $hasCriticalError = true;
+}
+
+$alterUserTemporaries = "ALTER TABLE `user_temporaries` MODIFY `user_id` BIGINT NOT NULL;";
+if (!$botConn->query($alterUserTemporaries)) {
+    echo "Error modifying `user_temporaries.user_id`: " . $botConn->error . "\n";
+    $hasCriticalError = true;
+}
+
+$alterAdminSettings = "ALTER TABLE `admin_settings` MODIFY `calculate_volume` VARCHAR(50) DEFAULT 'used_traffic';";
+if (!$botConn->query($alterAdminSettings)) {
+    echo "Error modifying `admin_settings.calculate_volume`: " . $botConn->error . "\n";
+    $hasCriticalError = true;
+}
+
 $scriptPath = "/var/www/html/marzhelp/crons/cron.php";
 setupCronJob($scriptPath);
 
+$marzbanConn->close();
 $botConn->close();
 
 exit($hasCriticalError ? 1 : 0);
