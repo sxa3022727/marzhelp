@@ -746,6 +746,15 @@ function manageEventBasedOnLimits($interval = 1) {
                 WHERE ml.type = 'exclude'
                 AND eia.proxy_id IS NULL;
 
+                DELETE eia
+                FROM exclude_inbounds_association eia
+                INNER JOIN proxies p ON eia.proxy_id = p.id
+                INNER JOIN users u ON p.user_id = u.id
+                INNER JOIN admins a ON u.admin_id = a.id
+                LEFT JOIN marzhelp_limits ml 
+                    ON ml.admin_id = a.id AND ml.inbound_tag = eia.inbound_tag AND ml.type = 'exclude'
+                WHERE ml.admin_id IS NULL;
+
                 INSERT INTO exclude_inbounds_association (proxy_id, inbound_tag)
                 SELECT p.id, ml.inbound_tag
                 FROM marzhelp_limits ml
@@ -756,6 +765,14 @@ function manageEventBasedOnLimits($interval = 1) {
                     ON eia.proxy_id = p.id AND eia.inbound_tag = ml.inbound_tag
                 WHERE ml.type = 'dedicated'
                 AND eia.proxy_id IS NULL;
+
+                DELETE eia
+                FROM exclude_inbounds_association eia
+                INNER JOIN proxies p ON eia.proxy_id = p.id
+                INNER JOIN users u ON p.user_id = u.id
+                INNER JOIN admins a ON u.admin_id = a.id
+                INNER JOIN marzhelp_limits ml 
+                    ON ml.admin_id = a.id AND ml.inbound_tag = eia.inbound_tag AND ml.type = 'dedicated';
             END;
         ");
         if ($marzbanConn->error) {
