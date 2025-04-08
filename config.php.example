@@ -10,11 +10,15 @@ $botDbUser = 'root';
 $botDbPass = '';
 $botDbName = 'marzhelp';
 
-
 $vpnDbHost = ''; 
 // If you install the robot on an external host or server
 # $vpnDbPort = 3306; 
 $vpnDbUser = 'root';
 $vpnDbPass = '';
 $vpnDbName = 'marzban';
+
+// Marzban Panel Configuration
+$marzbanUrl = 'https://your-marzban-server.com'; 
+$marzbanAdminUsername = 'your_admin_username';  
+$marzbanAdminPassword = 'your_admin_password';  
 ?>
