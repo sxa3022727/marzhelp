@@ -74,14 +74,14 @@ function getLang($userId) {
         file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Error preparing statement: " . $botConn->error . "\n", FILE_APPEND);
     }
 
-    $languageFile = __DIR__ . "/app/languages/{$langCode}.php";
+    $languageFile = __DIR__ . "/app/language/{$langCode}.php";
 
     if (file_exists($languageFile)) {
         $language = include $languageFile;
         return $language;
     }
 
-    return include __DIR__ . "/app/languages/en.php";
+    return include __DIR__ . "/app/language/en.php";
 }
 
 function sendRequest($method, $parameters) {
