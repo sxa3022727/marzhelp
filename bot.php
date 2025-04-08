@@ -13,6 +13,7 @@ if (php_sapi_name() !== 'cli') {
 }
 
 require_once 'app/classes/marzban.php';
+require_once 'app/functions/keyboards.php';
 require 'config.php';
 
 $latestVersion = 'v0.2.6';
@@ -50,7 +51,7 @@ function checkMarzbanConfig() {
 function getLang($userId) {
     global $botConn;
 
-    $langCode = 'en';
+    $langCode = 'en'; 
 
     if ($stmt = $botConn->prepare("SELECT lang FROM user_states WHERE user_id = ?")) {
         $stmt->bind_param("i", $userId);
@@ -73,13 +74,14 @@ function getLang($userId) {
         file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Error preparing statement: " . $botConn->error . "\n", FILE_APPEND);
     }
 
-    $languages = include 'languages.php';
+    $languageFile = __DIR__ . "/app/languages/{$langCode}.php";
 
-    if (isset($languages[$langCode])) {
-        return $languages[$langCode];
+    if (file_exists($languageFile)) {
+        $language = include $languageFile;
+        return $language;
     }
 
-    return $languages['en']; 
+    return include __DIR__ . "/app/languages/en.php";
 }
 
 function sendRequest($method, $parameters) {
@@ -111,300 +113,6 @@ function sendRequest($method, $parameters) {
     
     return $result;
 }
-function getMainMenuKeyboard($userId) {
-    global $allowedUsers;
-    $lang = getLang($userId);
-
-    if (in_array($userId, $allowedUsers)) {
-        return [
-            'inline_keyboard' => [
-                [
-                    ['text' => $lang['manage_admins'], 'callback_data' => 'manage_admins']
-                ],
-                [
-                    ['text' => $lang['account_info'], 'callback_data' => 'account_info']
-                ],
-                [
-                    ['text' => $lang['settings'], 'callback_data' => 'settings']
-                ]
-            ]
-        ];
-    } else {
-        return [
-            'inline_keyboard' => [
-                [
-                    ['text' => $lang['manage_admins'], 'callback_data' => 'manage_admins']
-                ],
-                [
-                    ['text' => $lang['account_info'], 'callback_data' => 'account_info']
-                ]
-            ]
-        ];
-    }
-}
-
-function getbacktoadminselectbutton($userId) {
-    $lang = getLang($userId);
-    return [
-        'inline_keyboard' => [ 
-            [
-                ['text' => $lang['back'], 'callback_data' => 'manage_admins']
-            ]
-        ]
-        ];
-}
-
-function getAdminKeyboard($userId, $adminId, $status) {
-    global $allowedUsers; 
-    
-    if (in_array($userId, $allowedUsers)) {
-        return getAdminManagementKeyboard($adminId, $status, $userId); 
-    } else {
-        return getLimitedAdminManagementKeyboard($adminId, $status, $userId); 
-    }
-}
-
-function getAdminManagementKeyboard($adminId, $status, $userId) {
-
-    $lang = getLang($userId);
-
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['calculate_volume'], 'callback_data' => 'calculate_volume:' . $adminId]            
-            ],
-            [
-                ['text' => $lang['admin_specifications_settings'], 'callback_data' => 'show_display_only_admin']
-            ],
-            [
-                ['text' => $lang['set_traffic_button'], 'callback_data' => 'set_traffic:' . $adminId],
-                ['text' => $lang['set_expiry_button'], 'callback_data' => 'set_expiry:' . $adminId]
-            ],
-            [
-                ['text' => $lang['setuserlimitbutton'], 'callback_data' => 'set_user_limit:' . $adminId],
-                ['text' => $lang['securityButton'], 'callback_data' => 'security:' . $adminId]
-            ],
-            [
-                ['text' => $lang['admin_limitations_settings'], 'callback_data' => 'show_display_only_limit']
-            ],
-            [
-                ['text' => $lang['limit_inbounds_button'], 'callback_data' => 'limit_inbounds:' . $adminId],
-                [
-                    'text' => ($status === 'active') ? $lang['disable_users_button'] : $lang['enable_users_button'],
-                    'callback_data' => ($status === 'active') ? 'disable_users:' . $adminId : 'enable_users:' . $adminId
-                ]
-            ],
-            [
-                ['text' => $lang['GoToLimitsButton'], 'callback_data' => 'show_restrictions:' . $adminId],
-                ['text' => $lang['protocolsettingsbutton'], 'callback_data' => 'protocol_settings:' . $adminId]
-            ],
-            [
-                ['text' => $lang['admin_users_settings'], 'callback_data' => 'show_display_only_users']
-            ],
-            [
-                ['text' => $lang['add_time_button'], 'callback_data' => 'add_time:' . $adminId],
-                ['text' => $lang['subtract_time_button'], 'callback_data' => 'reduce_time:' . $adminId]
-            ],
-            [
-                ['text' => $lang['adddatalimitbutton'], 'callback_data' => 'add_data_limit:' . $adminId],
-                ['text' => $lang['subtractdata_button'], 'callback_data' => 'subtract_data_limit:' . $adminId]
-            ],
-            [
-                ['text' => $lang['back'], 'callback_data' => 'manage_admins'],
-                ['text' => $lang['refresh_button'], 'callback_data' => 'select_admin:' . $adminId]
-            ]
-        ]
-    ];
-}
-
-function getLimitedAdminManagementKeyboard($adminId, $status, $userId) {
-    $lang = getLang($userId);
-    
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['add_time_button'], 'callback_data' => 'add_time:' . $adminId],
-                ['text' => $lang['subtract_time_button'], 'callback_data' => 'reduce_time:' . $adminId]
-            ],
-            [
-                ['text' => $lang['adddatalimitbutton'], 'callback_data' => 'add_data_limit:' . $adminId],
-                ['text' => $lang['subtractdata_button'], 'callback_data' => 'subtract_data_limit:' . $adminId]
-            ],
-        [
-            ['text' => $lang['back'], 'callback_data' => 'manage_admins'],
-            ['text' => $lang['refresh_button'], 'callback_data' => 'select_admin:' . $adminId]
-        ]
-        ]
-    ];
-    
-}
-
-function getprotocolsttingskeyboard($adminId, $userId) {
-    $lang = getLang($userId);
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['add_protocol_button'], 'callback_data' => 'add_protocol:' . $adminId],
-                ['text' => $lang['remove_protocol_button'], 'callback_data' => 'remove_protocol:' . $adminId]
-            ],
-            [
-                ['text' => $lang['enable_inbounds_button'], 'callback_data' => 'enable_inbounds:' . $adminId],
-                ['text' => $lang['disable_inbounds_button'], 'callback_data' => 'disable_inbounds:' . $adminId]
-            ],
-            [
-                ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
-            ]
-        ]
-    ];
-    
-}
-
-function getSettingsMenuKeyboard($userId) {
-    $lang = getLang($userId);
-
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['update_bot'], 'callback_data' => 'update_bot'],
-                ['text' => $lang['save_admin_traffic'], 'callback_data' => 'save_admin_traffic']
-            ],
-            [
-                ['text' => $lang['update_marzban'], 'callback_data' => 'update_marzban'],
-                ['text' => $lang['restart_marzban'], 'callback_data' => 'restart_marzban']
-            ],
-            [
-                ['text' => $lang['backup'], 'callback_data' => 'backup'],
-                ['text' => $lang['change_template'], 'callback_data' => 'change_template']
-            ],
-            [
-                ['text' => $lang['back'], 'callback_data' => 'back_to_main']
-            ]
-        ]
-    ];
-}
-
-function getSecurityKeyboard($adminId, $userId) {
-    $lang = getLang($userId);
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['changePasswordButton'], 'callback_data' => 'change_password:' . $adminId],
-                ['text' => $lang['changeSudoButton'], 'callback_data' => 'change_sudo:' . $adminId]
-            ],
-            [
-                ['text' => $lang['changeTelegramIdButton'], 'callback_data' => 'change_telegram_id:' . $adminId],
-                ['text' => $lang['changeUsernameButton'], 'callback_data' => 'change_username:' . $adminId]
-            ],
-            [
-                ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
-            ]
-        ]
-    ];
-}
-
-function getSudoConfirmationKeyboard($adminId, $userId) {
-    $lang = getLang($userId);
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['confirm_yes_button'], 'callback_data' => 'confirm_sudo_yes:' . $adminId],
-                ['text' => $lang['confirm_no_button'], 'callback_data' => 'confirm_sudo_no:' . $adminId]
-            ]
-        ]
-    ];
-    
-}
-
-function getConfirmationKeyboard($adminId, $userId) {
-    $lang = getLang($userId);
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['confirm_yes_button'], 'callback_data' => 'confirm_disable_yes:' . $adminId],
-                ['text' => $lang['confirm_no_button'], 'callback_data' => 'back_to_admin_management:' . $adminId]
-            ]
-        ]
-    ];
-    
-}
-
-function getBackToAdminManagementKeyboard($adminId, $userId) {
-    $lang = getLang($userId);
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
-            ]
-        ]
-    ];
-    
-}
-
-function getBackToMainKeyboard($userId) {
-    $lang = getLang($userId);
-    
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['back'], 'callback_data' => 'back_to_main']
-            ]
-        ]];
-}
-
-function getProtocolSelectionKeyboard($adminId, $action, $userId) {
-    $lang = getLang($userId);
-
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $lang['protocol_vmess'], 'callback_data' => $action . ':vmess:' . $adminId],
-                ['text' => $lang['protocol_vless'], 'callback_data' => $action . ':vless:' . $adminId]
-            ],
-            [
-                ['text' => $lang['protocol_trojan'], 'callback_data' => $action . ':trojan:' . $adminId],
-                ['text' => $lang['protocol_shadowsocks'], 'callback_data' => $action . ':shadowsocks:' . $adminId]
-            ],
-            [
-                ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
-            ]
-        ]];
-    }
-
-function getRestrictionsKeyboard($adminId, $preventUserDeletion, $preventUserCreation, $preventUserReset, $preventRevokeSubscription, $preventUnlimitedTraffic, $userId) {
-    
-    $lang = getLang($userId);
-
-        $preventUserDeletionStatus = $preventUserDeletion ? $lang['active_status'] : $lang['inactive_status'];
-        $preventUserCreationStatus = $preventUserCreation ? $lang['active_status'] : $lang['inactive_status'];
-        $preventUserResetStatus = $preventUserReset ? $lang['active_status'] : $lang['inactive_status'];
-        $preventRevokeSubscriptionStatus = $preventRevokeSubscription ? $lang['active_status'] : $lang['inactive_status'];
-        $preventUnlimitedTrafficStatus = $preventUnlimitedTraffic ? $lang['active_status'] : $lang['inactive_status'];
-    
-        $preventUserDeletionButtonText = $lang['preventUserDeletionButton'] . ' ' . $preventUserDeletionStatus;
-        $preventUserCreationButtonText = $lang['preventUserCreationButton'] . ' ' . $preventUserCreationStatus;
-        $preventUserResetButtonText = $lang['preventUserResetButton'] . ' ' . $preventUserResetStatus;
-        $preventRevokeSubscriptionButtonText = $lang['preventRevokeSubscriptionButton'] . ' ' . $preventRevokeSubscriptionStatus;
-        $preventUnlimitedTrafficButtonText = $lang['preventUnlimitedTrafficButton'] . ' ' . $preventUnlimitedTrafficStatus;
-    
-        return [
-            'inline_keyboard' => [
-                [
-                    ['text' => $preventUserDeletionButtonText, 'callback_data' => 'toggle_prevent_user_deletion:' . $adminId],
-                    ['text' => $preventUserCreationButtonText, 'callback_data' => 'toggle_prevent_user_creation:' . $adminId]
-                ],
-                [
-                    ['text' => $preventUserResetButtonText, 'callback_data' => 'toggle_prevent_user_reset:' . $adminId],
-                    ['text' => $preventRevokeSubscriptionButtonText, 'callback_data' => 'toggle_prevent_revoke_subscription:' . $adminId]
-                ],
-                [
-                    ['text' => $preventUnlimitedTrafficButtonText, 'callback_data' => 'toggle_prevent_unlimited_traffic:' . $adminId]
-                ],
-                [
-                    ['text' => $lang['back'], 'callback_data' => 'back_to_admin_management:' . $adminId]
-                ]
-            ]
-        ];
-    }
 
     function getUserRole($telegramId) {
     global $allowedUsers, $marzbanConn;
@@ -618,27 +326,7 @@ function handleTemporaryData($operation, $userId, $key = null, $value = null) {
         $stmt->close();
     }
 }
-function getTemplateMenuKeyboard($currentIndex, $templateCount, $userId) {
 
-    $lang = getLang($userId); 
-
-    $buttons = [
-        [
-            ['text' => $lang['prev'], 'callback_data' => 'template_prev'],
-            ['text' => $lang['next'], 'callback_data' => 'template_next']
-        ],
-        [
-            ['text' => $lang['apply_template'], 'callback_data' => 'apply_template']
-        ],
-        [
-            ['text' => $lang['back_to_settings'], 'callback_data' => 'back_to_settings']
-        ]
-    ];
-
-    return [
-        'inline_keyboard' => $buttons
-    ];
-}
 function setUserTemplateIndex($userId, $index) {
     global $botConn;
 
@@ -658,68 +346,6 @@ function getUserTemplateIndex($userId) {
     $stmt->close();
 
     return $templateIndex !== null ? $templateIndex : 0; 
-}
-function getAdminExpireKeyboard($adminId, $userId) {
-    global $botConn; 
-
-    $lang = getLang($userId); 
-
-    $stmt = $botConn->prepare("SELECT status, hashed_password_before FROM admin_settings WHERE admin_id = ?");
-    $stmt->bind_param("i", $adminId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $stmt->close();
-
-    $currentStatus = $row && $row['status'] ? json_decode($row['status'], true) : ['time' => 'active', 'data' => 'active', 'users' => 'active'];
-    $usersButtonText = ($currentStatus['users'] === 'active') ? $lang['disable_users_button'] : $lang['enable_users_button'];
-
-    $hashedPasswordBefore = $row['hashed_password_before'] ?? null;
-    $passwordButtonText = ($hashedPasswordBefore) ? $lang['restore_password'] : $lang['change_password_temp'];
-
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $usersButtonText, 'callback_data' => ($currentStatus['users'] === 'active') ? "disable_users_{$adminId}" : "enable_users_{$adminId}"],
-                ['text' => $passwordButtonText, 'callback_data' => ($hashedPasswordBefore) ? "restore_password_{$adminId}" : "change_password_{$adminId}"]
-            ]
-        ]
-    ];
-}
-
-function getCalculateVolumeKeyboard($adminId, $userId) {
-    global $botConn;
-    $lang = getLang($userId);
-
-    $stmt = $botConn->prepare("SELECT calculate_volume FROM admin_settings WHERE admin_id = ?");
-    $stmt->bind_param("i", $adminId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $calculateVolume = $result->fetch_assoc()['calculate_volume'] ?? 'used_traffic';
-    $stmt->close();
-
-    $usedTrafficText = $lang['used_traffic_button'];
-    $createdTrafficText = $lang['created_traffic_button'];
-
-    if ($calculateVolume === 'used_traffic') {
-        $usedTrafficText .= ' ✅';
-    } else {
-        $createdTrafficText .= ' ✅';
-    }
-
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => $usedTrafficText, 'callback_data' => 'set_calculate_volume:used_traffic:' . $adminId]
-            ],
-            [
-                ['text' => $createdTrafficText, 'callback_data' => 'set_calculate_volume:created_traffic:' . $adminId]
-            ],
-            [
-                ['text' => $lang['back'], 'callback_data' => 'select_admin:' . $adminId]
-            ]
-        ]
-    ];
 }
 
 function manageEventBasedOnLimits($interval = 1) {
@@ -1078,7 +704,7 @@ function autoCreateAdmin($chatId) {
 }
 
 function handleCallbackQuery($callback_query) {
-    global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $marzbanAdminUsername, $apiURL, $latestVersion, $marzbanapi;
+    global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $vpnDbPass, $apiURL, $latestVersion, $marzbanapi;
 
     $callbackId = $callback_query['id'];
     $userId = $callback_query['from']['id'];
@@ -1585,14 +1211,6 @@ function handleCallbackQuery($callback_query) {
             sendRequest('sendMessage', [
                 'chat_id' => $chatId,
                 'text' => $lang['admin_not_found']
-            ]);
-            return;
-        }
-    
-        if ($admin['username'] === $marzbanAdminUsername) {
-            sendRequest('sendMessage', [
-                'chat_id' => $chatId,
-                'text' => $lang['cannot_delete_marzhelp_admin'] ?? 'You cannot delete the MarzHelp admin!'
             ]);
             return;
         }
@@ -4018,7 +3636,7 @@ if (strpos($data, 'set_calculate_volume:') === 0) {
 }
 
     function handleMessage($message) {
-        global $botConn, $marzbanConn, $marzbanapi, $marzbanAdminUsername;
+        global $botConn, $marzbanConn, $marzbanapi;
     
         $chatId = $message['chat']['id'];
         $text = trim($message['text'] ?? '');
