@@ -524,26 +524,23 @@ configure_telegram_bot() {
 
 # Function to install required PHP packages
 install_php_packages() {
-    local php_version
-    php_version=$(php -v | grep -oP 'PHP \K[0-9]+\.[0-9]+' | head -1)
-
+    local php_version=$(php -v | grep -oP 'PHP \K[0-9]+\.[0-9]+' | head -1 2>/dev/null || echo "8.3")
     local required_packages=(
-        "php${php_version}-mysql"
-        "php${php_version}-curl"
-        "php${php_version}-mbstring"
-        "php${php_version}-xml"
-        "php${php_version}-zip"
-        "php${php_version}-soap"
+        "php${php_version}-mysql" "php${php_version}-curl" "php${php_version}-mbstring"
+        "php${php_version}-xml" "php${php_version}-zip" "php${php_version}-soap"
+        "php${php_version}-fpm"  # Use PHP-FPM for Nginx
     )
 
+    echo -e "\033[1;34mInstalling PHP packages for version $php_version...\033[0m"
     for package in "${required_packages[@]}"; do
-        if dpkg -l | grep -q "^ii  $package "; then
-            echo "$package is already installed."
-        else
-            echo "Installing $package..."
-            apt-get install --no-install-recommends -y "$package"
-        fi
+        dpkg -l | grep -q "^ii  $package " && { echo "$package is already installed."; continue; }
+        echo "Installing $package..."
+        apt-get install --no-install-recommends -y "$package" || echo -e "\033[1;31mWarning: Failed to install $package.\033[0m"
     done
+
+    # Prevent Apache installation and disable if present
+    dpkg -l | grep -q "^ii  apache2" && { echo -e "\033[1;33mApache detected. Disabling...\033[0m"; systemctl stop apache2; systemctl disable apache2; apt remove --purge -y apache2; }
+    echo -e "\033[1;32mPHP packages installed successfully.\033[0m"
 }
 install_marzhelp() {
 
@@ -638,6 +635,10 @@ EOF
 \$vpnDbUser = 'root';
 \$vpnDbPass = '$MYSQL_ROOT_PASSWORD';
 \$vpnDbName = '$vpnDbName';
+
+\$marzbanUrl = 'https://your-marzban-server.com'; 
+\$marzbanAdminUsername = 'your_admin_username';  
+\$marzbanAdminPassword = 'your_admin_password';  
 ?>
 EOL
 
