@@ -538,9 +538,19 @@ install_php_packages() {
         apt-get install --no-install-recommends -y "$package" || echo -e "\033[1;31mWarning: Failed to install $package.\033[0m"
     done
 
-    # Prevent Apache installation and disable if present
-    dpkg -l | grep -q "^ii  apache2" && { echo -e "\033[1;33mApache detected. Disabling...\033[0m"; systemctl stop apache2; systemctl disable apache2; apt remove --purge -y apache2; }
-    echo -e "\033[1;32mPHP packages installed successfully.\033[0m"
+    # Check if Apache is installed and active, then disable it
+if dpkg -l | grep -q "^ii  apache2"; then
+    if systemctl is-active --quiet apache2; then
+        echo -e "\033[1;33mApache detected and running. Disabling...\033[0m"
+        systemctl stop apache2
+        systemctl disable apache2
+    else
+        echo -e "\033[1;32mApache is installed but not running. No action needed.\033[0m"
+    fi
+    apt remove --purge -y apache2
+else
+    echo -e "\033[1;32mApache is not installed. Skipping...\033[0m"
+fi
 }
 install_marzhelp() {
 
