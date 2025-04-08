@@ -10,7 +10,7 @@ if (php_sapi_name() !== 'cli') {
         header("Location: https://t.me/marzhelp");
         exit;
     }
-}
+} 
 
 require_once 'app/classes/marzban.php';
 require_once 'app/functions/keyboards.php';
