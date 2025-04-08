@@ -12,9 +12,12 @@ if (php_sapi_name() !== 'cli') {
     }
 }
 
+require_once 'app/classes/marzban.php';
 require 'config.php';
 
-$latestVersion = 'v0.2.5';
+$latestVersion = 'v0.2.6';
+
+$marzbanapi = new MarzbanAPI($marzbanUrl, $marzbanAdminUsername, $marzbanAdminPassword);
 
 $botConn = new mysqli($botDbHost, $botDbUser, $botDbPass, $botDbName);
 if ($botConn->connect_error) {
@@ -34,6 +37,14 @@ $marzbanConn->set_charset("utf8");
 
 function logDebug($message) {
     file_put_contents('debug.log', date('[Y-m-d H:i:s] ') . $message . PHP_EOL, FILE_APPEND);
+}
+
+function checkMarzbanConfig() {
+    global $marzbanUrl, $marzbanAdminUsername, $marzbanAdminPassword;
+    return !empty($marzbanUrl) && !empty($marzbanAdminUsername) && !empty($marzbanAdminPassword) &&
+           $marzbanUrl !== 'https://your-marzban-server.com' &&
+           $marzbanAdminUsername !== 'your_admin_username' &&
+           $marzbanAdminPassword !== 'your_admin_password';
 }
 
 function getLang($userId) {
@@ -1002,8 +1013,72 @@ function getAdminInfoText($adminInfo, $userId) {
     return $infoText . $userStatsText;
 }
 
+function autoCreateAdmin($chatId) {
+    global $marzbanConn;
+
+    $filePath = 'admin_credentials.txt';
+
+    if (file_exists($filePath)) {
+        $credentials = file_get_contents($filePath);
+        $configMessage = "اطلاعات ادمین مرزهلپ را در فایل کانفیگ به صورت زیر قرار دهید:\n\n" .
+            "```php\n" .
+            $credentials .
+            "\n\n```" .
+            "برای ادیت فایل کانفیگ ، این کامند را وارد کنید:.\n\n" .
+            "`nano /var/www/html/marzhelp/config.php`\n\n" .
+           "بعد از وارد کردن اطلاعات، دوباره امتحان کنید.\n\n" . 
+           "مرزهلپ برای راه اندازی نیاز به ادمین دارد بنابر این لازم است شما ادمین را ایجاد کنید و به صورت بالا در فایل config.php قرار دهید." . 
+           "\n\n" .
+            "لطفا ادرس پنل خود را با `https://your-marzban-server.com` جایگزین کنید.";
+
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => "ادمین مرزهلپ قبلاً ایجاد شده است.\n\n" . $configMessage,
+            'parse_mode' => 'Markdown'
+        ]);
+        return;
+    }
+
+    $username = 'marzhelp_' . bin2hex(random_bytes(4));
+    $password = generateRandomPassword(12);
+    $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+
+    $stmt = $marzbanConn->prepare("INSERT INTO admins (username, hashed_password, created_at, is_sudo) VALUES (?, ?, NOW(), 1)");
+    $stmt->bind_param("ss", $username, $hashedPassword);
+
+    if ($stmt->execute()) {
+        $credentials = "\$marzbanUrl = 'https://your-marzban-server.com';\n" .
+            "\$marzbanAdminUsername = '$username';\n" .
+            "\$marzbanAdminPassword = '$password';";
+        file_put_contents($filePath, $credentials);
+
+        $configMessage = "ادمین جدید مرزهلپ با موفقیت ایجاد شد. لطفاً اطلاعات زیر را در فایل `config.php` قرار دهید:\n\n" .
+            "```php\n" .
+            $credentials .
+            "برای ادیت فایل کانفیگ ، این کامند را وارد کنید:.\n\n" .
+            "`nano /var/www/html/marzhelp/config.php`\n\n" .
+           "بعد از وارد کردن اطلاعات، دوباره امتحان کنید.\n\n" . 
+           "مرزهلپ برای راه اندازی نیاز به ادمین دارد بنابر این لازم است شما ادمین را ایجاد کنید و به صورت بالا در فایل config.php قرار دهید." . 
+           "\n\n" .
+            "لطفا ادرس پنل خود را با `https://your-marzban-server.com` جایگزین کنید.";
+
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $configMessage,
+            'parse_mode' => 'Markdown'
+        ]);
+    } else {
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => "خطا در ایجاد ادمین مرزهلپ: " . $stmt->error
+        ]);
+    }
+
+    $stmt->close();
+}
+
 function handleCallbackQuery($callback_query) {
-    global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $vpnDbPass, $apiURL, $latestVersion;
+    global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $vpnDbPass, $apiURL, $latestVersion, $marzbanapi;
 
     $callbackId = $callback_query['id'];
     $userId = $callback_query['from']['id'];
@@ -1025,6 +1100,11 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
+
+    if (!checkMarzbanConfig()) {
+        autoCreateAdmin($chatId);
+        return; 
+        }
 
     if (strpos($data, 'show_display_only_') === 0) {
         $responseKey = substr($data, strlen('show_display_only_'));
@@ -1447,6 +1527,9 @@ function handleCallbackQuery($callback_query) {
         if (in_array($userId, $allowedUsers)) {
             $keyboard['inline_keyboard'][] = [
                 ['text' => $lang['add_admin'], 'callback_data' => 'add_admin'],
+                ['text' => $lang['delete_admin'], 'callback_data' => 'delete_admin']
+            ];
+            $keyboard['inline_keyboard'][] = [
                 ['text' => $lang['back'], 'callback_data' => 'back_to_main']
             ];
         } else {
@@ -1462,6 +1545,146 @@ function handleCallbackQuery($callback_query) {
             'message_id' => $messageId,
             'text' => $lang['select_admin_prompt'],
             'reply_markup' => $keyboard
+        ]);
+        return;
+    }
+        
+    if ($data === 'delete_admin') {
+        $adminsResult = $marzbanConn->query("SELECT id, username FROM admins");
+        $admins = [];
+        while ($row = $adminsResult->fetch_assoc()) {
+            $admins[] = ['text' => $row['username'], 'callback_data' => 'confirm_delete_admin:' . $row['id']];
+        }
+    
+        $keyboard = ['inline_keyboard' => array_chunk($admins, 2)];
+        $keyboard['inline_keyboard'][] = [
+            ['text' => $lang['back'], 'callback_data' => 'manage_admins']
+        ];
+    
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['select_admin_to_delete'],
+            'reply_markup' => $keyboard
+        ]);
+        return;
+    }
+    
+    if (strpos($data, 'confirm_delete_admin:') === 0) {
+        $adminId = intval(substr($data, strlen('confirm_delete_admin:')));
+    
+        $stmt = $marzbanConn->prepare("SELECT username FROM admins WHERE id = ?");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $admin = $result->fetch_assoc();
+        $stmt->close();
+    
+        if (!$admin) {
+            sendRequest('deleteMessage', ['chat_id' => $chatId, 'message_id' => $userState['message_id']]);    
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['admin_not_found']
+            ]);
+            return;
+        }
+    
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => $lang['confirm_yes_button'], 'callback_data' => 'delete_admin_confirmed:' . $adminId],
+                    ['text' => $lang['confirm_no_button'], 'callback_data' => 'delete_admin_cancel']
+                ]
+            ]
+        ];
+    
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => sprintf($lang['confirm_delete_admin'], $admin['username']),
+            'reply_markup' => $keyboard
+        ]);
+        return;
+    }
+    
+    if (strpos($data, 'delete_admin_confirmed:') === 0) {
+        $adminId = intval(substr($data, strlen('delete_admin_confirmed:')));
+    
+        $stmt = $marzbanConn->prepare("SELECT username, is_sudo FROM admins WHERE id = ?");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $admin = $result->fetch_assoc();
+        $stmt->close();
+    
+        if (!$admin) {
+            sendRequest('deleteMessage', ['chat_id' => $chatId, 'message_id' => $userState['message_id']]);    
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['admin_not_found']
+            ]);
+            return;
+        }
+    
+        $username = $admin['username'];
+    
+        if ($admin['is_sudo'] == 1) {
+            $stmt = $marzbanConn->prepare("UPDATE admins SET is_sudo = 0 WHERE id = ?");
+            $stmt->bind_param("i", $adminId);
+            $stmt->execute();
+            $stmt->close();
+        }
+    
+        try {
+            $response = $marzbanapi->removeAdmin($username);
+    
+            if (isset($response['detail']) && $response['detail'] === 'Admin removed successfully') {
+                sendRequest('deleteMessage', ['chat_id' => $chatId, 'message_id' => $userState['message_id']]);   
+                sendRequest('sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => sprintf($lang['admin_deleted_success'], $username)
+                ]);
+            } else {
+                sendRequest('deleteMessage', ['chat_id' => $chatId, 'message_id' => $userState['message_id']]);        
+                sendRequest('sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => sprintf($lang['admin_delete_failed'], $username) . "\n" . json_encode($response)
+                ]);
+            }
+        } catch (Exception $e) {
+            sendRequest('deleteMessage', ['chat_id' => $chatId, 'message_id' => $userState['message_id']]);    
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['admin_delete_failed'] . "\n" . $e->getMessage()
+            ]);
+        }
+        
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            #'message_id' => $messageId,
+            'text' => $lang['main_menu'],
+            'reply_markup' => getMainMenuKeyboard($userId)
+        ]);
+        return;
+    }
+    
+    if ($data === 'delete_admin_cancel') {
+        $adminInfo = getAdminInfo($adminId, $userId);
+        if (!$adminInfo) {
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['callbackResponse_adminNotFound']
+            ]);
+            return;
+        }
+        $adminInfo['adminId'] = $adminId;
+        $infoText = getAdminInfoText($adminInfo, $userId);
+        
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $infoText,
+            'reply_markup' => getAdminKeyboard($chatId, $adminId, 'active')
         ]);
         return;
     }
@@ -2250,7 +2473,6 @@ function handleCallbackQuery($callback_query) {
     }
     if (strpos($data, 'disable_users:') === 0) {
         $adminId = intval(substr($data, strlen('disable_users:')));
-
         sendRequest('editMessageText', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
@@ -2259,96 +2481,120 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
+    
     if (strpos($data, 'confirm_disable_yes:') === 0) {
         $adminId = intval(substr($data, strlen('confirm_disable_yes:')));
-
-        $marzbanConn->query("UPDATE users SET status = 'disabled' WHERE admin_id = '$adminId' AND status = 'active'");
-
-        $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
-        $stmt->bind_param("i", $adminId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
-        $stmt->close();
-        
-        $currentStatus['users'] = 'disabled';
-        $newStatus = json_encode($currentStatus);
-        
-        $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
-        $stmt->bind_param("si", $newStatus, $adminId);
-        $stmt->execute();
-        $stmt->close();
-
+        global $marzbanConn, $botConn, $marzbanapi;
+    
         $adminInfo = getAdminInfo($adminId, $userId);
-        if (!$adminInfo) {
-            sendRequest('sendMessage', [
+        if (!$adminInfo || !isset($adminInfo['username'])) {
+            sendRequest('editMessageText', [
                 'chat_id' => $chatId,
+                'message_id' => $messageId,
                 'text' => $lang['callbackResponse_adminNotFound']
             ]);
             return;
         }
-        $adminInfo['adminId'] = $adminId;
-
-        sendRequest('editMessageText', [
-            'chat_id' => $chatId,
-            'message_id' => $messageId,
-            'text' => $lang['users_disabled']
-        ]);
-        $infoText = getAdminInfoText($adminInfo, $userId);
-
-        sendRequest('sendMessage', [
-            'chat_id' => $chatId,
-            'text' => $infoText,
-            'parse_mode' => 'Markdown',
-            'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status'])
-        ]);
-
+        $adminUsername = $adminInfo['username'];
+    
+        try {
+            $marzbanapi->disableAllActiveUsers($adminUsername);
+    
+            $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
+            $stmt->bind_param("i", $adminId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
+            $stmt->close();
+    
+            $currentStatus['users'] = 'disabled';
+            $newStatus = json_encode($currentStatus);
+    
+            $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
+            $stmt->bind_param("si", $newStatus, $adminId);
+            $stmt->execute();
+            $stmt->close();
+    
+            $adminInfo = getAdminInfo($adminId, $userId); 
+            $adminInfo['adminId'] = $adminId;
+            $adminInfo['status'] = $currentStatus['users']; 
+    
+            sendRequest('deleteMessage', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId
+            ]);
+    
+            $infoText = getAdminInfoText($adminInfo, $userId);
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $infoText,
+                'parse_mode' => 'Markdown',
+                'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status'])
+            ]);
+        } catch (Exception $e) {
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => sprintf($lang['disable_users_error'], $e->getMessage())
+            ]);
+        }
         return;
     }
+    
     if (strpos($data, 'enable_users:') === 0) {
         $adminId = intval(substr($data, strlen('enable_users:')));
-
-        $marzbanConn->query("UPDATE users SET status = 'active' WHERE admin_id = '$adminId' AND status = 'disabled'");
-
-        $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
-        $stmt->bind_param("i", $adminId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'disabled'];
-        $stmt->close();
-
-        $currentStatus['users'] = 'active';
-        $newStatus = json_encode($currentStatus);
-
-        $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
-        $stmt->bind_param("si", $newStatus, $adminId);
-        $stmt->execute();
-        $stmt->close();
-
+        global $marzbanConn, $botConn, $marzbanapi;
+    
         $adminInfo = getAdminInfo($adminId, $userId);
-        if (!$adminInfo) {
+        if (!$adminInfo || !isset($adminInfo['username'])) {
             sendRequest('sendMessage', [
                 'chat_id' => $chatId,
                 'text' => $lang['callbackResponse_adminNotFound']
             ]);
             return;
         }
-        $adminInfo['adminId'] = $adminId;
-
-        sendRequest('sendMessage', [
-            'chat_id' => $chatId,
-            'message_id' => $messageId,
-            'text' => $lang['users_enabled']
-                ]);
-        $infoText = getAdminInfoText($adminInfo, $userId);
-
-        sendRequest('sendMessage', [
-            'chat_id' => $chatId,
-            'text' => $infoText,
-            'parse_mode' => 'Markdown',
-            'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status'])
-        ]);
-
+        $adminUsername = $adminInfo['username'];
+    
+        try {
+            $marzbanapi->activateAllDisabledUsers($adminUsername);
+    
+            $stmt = $botConn->prepare("SELECT status FROM admin_settings WHERE admin_id = ?");
+            $stmt->bind_param("i", $adminId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $currentStatus = json_decode($result->fetch_assoc()['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'disabled'];
+            $stmt->close();
+    
+            $currentStatus['users'] = 'active';
+            $newStatus = json_encode($currentStatus);
+    
+            $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
+            $stmt->bind_param("si", $newStatus, $adminId);
+            $stmt->execute();
+            $stmt->close();
+    
+            $adminInfo = getAdminInfo($adminId, $userId); 
+            $adminInfo['adminId'] = $adminId;
+            $adminInfo['status'] = $currentStatus['users']; 
+    
+            sendRequest('deleteMessage', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId
+            ]);
+    
+            $infoText = getAdminInfoText($adminInfo, $userId);
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $infoText,
+                'parse_mode' => 'Markdown',
+                'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status'])
+            ]);
+        } catch (Exception $e) {
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => sprintf($lang['enable_users_error'], $e->getMessage())
+            ]);
+        }
         return;
     }
     if (strpos($data, 'limit_inbounds:') === 0) {
@@ -3208,10 +3454,7 @@ function handleCallbackQuery($callback_query) {
                 $dbUpdateCommand = "php /var/www/html/marzhelp/table.php";
                 exec($dbUpdateCommand, $db_output, $db_return_var);
         
-                sendRequest('deleteMessage', [
-                    'chat_id' => $chatId,
-                    'message_id' => $userState['message_id'],
-                ]);
+                            sendRequest('deleteMessage', ['chat_id' => $chatId, 'message_id' => $userState['message_id']]);
         
                 if ($db_return_var === 0 && empty($db_output)) {
                     sendRequest('sendMessage', [
@@ -3235,10 +3478,7 @@ function handleCallbackQuery($callback_query) {
                     ]);
                 }
             } else {
-                sendRequest('deleteMessage', [
-                    'chat_id' => $chatId,
-                    'message_id' => $userState['message_id'],
-                ]);
+                            sendRequest('deleteMessage', ['chat_id' => $chatId, 'message_id' => $userState['message_id']]);
                 sendRequest('sendMessage', [
                     'chat_id' => $chatId,
                     'text' => $lang['update_failed']
@@ -3497,41 +3737,59 @@ if (strpos($data, 'template_') === 0) {
 if (strpos($data, 'disable_users_') === 0) {
     $adminId = str_replace('disable_users_', '', $data);
     if (in_array($userId, $allowedUsers)) {
-        $stmt = $marzbanConn->prepare("UPDATE users SET status = 'disabled' WHERE admin_id = ? AND status = 'active'");
-        $stmt->bind_param("i", $adminId);
-        $stmt->execute();
-        $stmt->close();
+        global $marzbanConn, $botConn, $marzbanapi;
 
-        $stmt = $botConn->prepare("SELECT status, hashed_password_before FROM admin_settings WHERE admin_id = ?");
-        $stmt->bind_param("i", $adminId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        $currentStatus = json_decode($row['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
-        $currentStatus['hashed_password_before'] = $row['hashed_password_before'];
-        $stmt->close();
+        $adminInfo = getAdminInfo($adminId, $userId);
+        if (!$adminInfo || !isset($adminInfo['username'])) {
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => $lang['callbackResponse_adminNotFound'],
+                'show_alert' => true
+            ]);
+            return;
+        }
+        $adminUsername = $adminInfo['username'];
 
-        $currentStatus['users'] = 'disabled';
-        $newStatus = json_encode($currentStatus);
+        try {
+            $marzbanapi->disableAllActiveUsers($adminUsername);
 
-        $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
-        $stmt->bind_param("si", $newStatus, $adminId);
-        $stmt->execute();
-        $stmt->close();
+            $stmt = $botConn->prepare("SELECT status, hashed_password_before FROM admin_settings WHERE admin_id = ?");
+            $stmt->bind_param("i", $adminId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $row = $result->fetch_assoc();
+            $currentStatus = json_decode($row['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'active'];
+            $currentStatus['hashed_password_before'] = $row['hashed_password_before'];
+            $stmt->close();
 
-        $newKeyboard = getAdminExpireKeyboard($adminId, $userId);
+            $currentStatus['users'] = 'disabled';
+            $newStatus = json_encode($currentStatus);
 
-        sendRequest('editMessageReplyMarkup', [
-            'chat_id' => $chatId,
-            'message_id' => $messageId,
-            'reply_markup' => json_encode($newKeyboard)
-        ]);
+            $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
+            $stmt->bind_param("si", $newStatus, $adminId);
+            $stmt->execute();
+            $stmt->close();
 
-        sendRequest('answerCallbackQuery', [
-            'callback_query_id' => $callbackId,
-            'text' => $lang['users_disabled'],
-            'show_alert' => true
-        ]);
+            $newKeyboard = getAdminExpireKeyboard($adminId, $userId);
+
+            sendRequest('editMessageReplyMarkup', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'reply_markup' => json_encode($newKeyboard)
+            ]);
+
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => $lang['users_disabled'],
+                'show_alert' => true
+            ]);
+        } catch (Exception $e) {
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => sprintf($lang['disable_users_error'], $e->getMessage()),
+                'show_alert' => true
+            ]);
+        }
     }
     return;
 }
@@ -3539,41 +3797,59 @@ if (strpos($data, 'disable_users_') === 0) {
 if (strpos($data, 'enable_users_') === 0) {
     $adminId = str_replace('enable_users_', '', $data);
     if (in_array($userId, $allowedUsers)) {
-        $stmt = $marzbanConn->prepare("UPDATE users SET status = 'active' WHERE admin_id = ? AND status = 'disabled'");
-        $stmt->bind_param("i", $adminId);
-        $stmt->execute();
-        $stmt->close();
+        global $marzbanConn, $botConn, $marzbanapi;
 
-        $stmt = $botConn->prepare("SELECT status, hashed_password_before FROM admin_settings WHERE admin_id = ?");
-        $stmt->bind_param("i", $adminId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        $currentStatus = json_decode($row['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'disabled'];
-        $currentStatus['hashed_password_before'] = $row['hashed_password_before'];
-        $stmt->close();
+        $adminInfo = getAdminInfo($adminId, $userId);
+        if (!$adminInfo || !isset($adminInfo['username'])) {
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => $lang['callbackResponse_adminNotFound'],
+                'show_alert' => true
+            ]);
+            return;
+        }
+        $adminUsername = $adminInfo['username'];
 
-        $currentStatus['users'] = 'active';
-        $newStatus = json_encode($currentStatus);
+        try {
+            $marzbanapi->activateAllDisabledUsers($adminUsername);
 
-        $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
-        $stmt->bind_param("si", $newStatus, $adminId);
-        $stmt->execute();
-        $stmt->close();
+            $stmt = $botConn->prepare("SELECT status, hashed_password_before FROM admin_settings WHERE admin_id = ?");
+            $stmt->bind_param("i", $adminId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $row = $result->fetch_assoc();
+            $currentStatus = json_decode($row['status'], true) ?? ['time' => 'active', 'data' => 'active', 'users' => 'disabled'];
+            $currentStatus['hashed_password_before'] = $row['hashed_password_before'];
+            $stmt->close();
 
-        $newKeyboard = getAdminExpireKeyboard($adminId, $userId);
+            $currentStatus['users'] = 'active';
+            $newStatus = json_encode($currentStatus);
 
-        sendRequest('editMessageReplyMarkup', [
-            'chat_id' => $chatId,
-            'message_id' => $messageId,
-            'reply_markup' => json_encode($newKeyboard)
-        ]);
+            $stmt = $botConn->prepare("UPDATE admin_settings SET status = ? WHERE admin_id = ?");
+            $stmt->bind_param("si", $newStatus, $adminId);
+            $stmt->execute();
+            $stmt->close();
 
-        sendRequest('answerCallbackQuery', [
-            'callback_query_id' => $callbackId,
-            'text' => $lang['users_enabled'],
-            'show_alert' => true
-        ]);
+            $newKeyboard = getAdminExpireKeyboard($adminId, $userId);
+
+            sendRequest('editMessageReplyMarkup', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'reply_markup' => json_encode($newKeyboard)
+            ]);
+
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => $lang['users_enabled'],
+                'show_alert' => true
+            ]);
+        } catch (Exception $e) {
+            sendRequest('answerCallbackQuery', [
+                'callback_query_id' => $callbackId,
+                'text' => sprintf($lang['enable_users_error'], $e->getMessage()),
+                'show_alert' => true
+            ]);
+        }
     }
     return;
 }
@@ -3734,7 +4010,7 @@ if (strpos($data, 'set_calculate_volume:') === 0) {
 }
 
     function handleMessage($message) {
-        global $botConn, $marzbanConn;
+        global $botConn, $marzbanConn, $marzbanapi;
     
         $chatId = $message['chat']['id'];
         $text = trim($message['text'] ?? '');
@@ -3753,6 +4029,12 @@ if (strpos($data, 'set_calculate_volume:') === 0) {
         $userState = handleUserState('get', $userId);
 
         if ($userState) {
+
+            if (!checkMarzbanConfig()) {
+                autoCreateAdmin($chatId);
+                return; 
+                }
+
             if ($userState['state'] === 'add_data_limit') {
                 $dataLimit = floatval($text); 
                 if ($dataLimit > 0) {
