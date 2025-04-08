@@ -524,18 +524,25 @@ configure_telegram_bot() {
 
 # Function to install required PHP packages
 install_php_packages() {
-    local php_version=$(php -v | grep -oP 'PHP \K[0-9]+\.[0-9]+' | head -1 2>/dev/null || echo "8.3")
+    local php_version
+    php_version=$(php -v | grep -oP 'PHP \K[0-9]+\.[0-9]+' | head -1)
+
     local required_packages=(
-        "php${php_version}-mysql" "php${php_version}-curl" "php${php_version}-mbstring"
-        "php${php_version}-xml" "php${php_version}-zip" "php${php_version}-soap"
-        "php${php_version}-fpm"  # Use PHP-FPM for Nginx
+        "php${php_version}-mysql"
+        "php${php_version}-curl"
+        "php${php_version}-mbstring"
+        "php${php_version}-xml"
+        "php${php_version}-zip"
+        "php${php_version}-soap"
     )
 
-    echo -e "\033[1;34mInstalling PHP packages for version $php_version...\033[0m"
     for package in "${required_packages[@]}"; do
-        dpkg -l | grep -q "^ii  $package " && { echo "$package is already installed."; continue; }
-        echo "Installing $package..."
-        apt-get install --no-install-recommends -y "$package" || echo -e "\033[1;31mWarning: Failed to install $package.\033[0m"
+        if dpkg -l | grep -q "^ii  $package "; then
+            echo "$package is already installed."
+        else
+            echo "Installing $package..."
+            apt-get install --no-install-recommends -y "$package"
+        fi
     done
 
     # Check if Apache is installed and active, then disable it
