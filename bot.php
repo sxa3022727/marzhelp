@@ -1078,7 +1078,7 @@ function autoCreateAdmin($chatId) {
 }
 
 function handleCallbackQuery($callback_query) {
-    global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $vpnDbPass, $apiURL, $latestVersion, $marzbanapi;
+    global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $marzbanAdminUsername, $apiURL, $latestVersion, $marzbanapi;
 
     $callbackId = $callback_query['id'];
     $userId = $callback_query['from']['id'];
@@ -1585,6 +1585,14 @@ function handleCallbackQuery($callback_query) {
             sendRequest('sendMessage', [
                 'chat_id' => $chatId,
                 'text' => $lang['admin_not_found']
+            ]);
+            return;
+        }
+    
+        if ($admin['username'] === $marzbanAdminUsername) {
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['cannot_delete_marzhelp_admin'] ?? 'You cannot delete the MarzHelp admin!'
             ]);
             return;
         }
@@ -4010,7 +4018,7 @@ if (strpos($data, 'set_calculate_volume:') === 0) {
 }
 
     function handleMessage($message) {
-        global $botConn, $marzbanConn, $marzbanapi;
+        global $botConn, $marzbanConn, $marzbanapi, $marzbanAdminUsername;
     
         $chatId = $message['chat']['id'];
         $text = trim($message['text'] ?? '');
