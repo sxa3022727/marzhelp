@@ -124,10 +124,10 @@ return [
         'selectMinInbound_prompt' => 'لطفاً حداقل یک اینباند را انتخاب کنید.',
         'setTraffic_prompt' => '♾️ لطفا حجم مورد نظر خود را بر واحد گیگابایت وارد نمایید:',
         'setExpiryDays_prompt' => '⏳ لطفا زمان مورد نظر خود را بر واحد روز وارد نمایید:',
-'limitInbounds_info' => 'اگر در حالت "🔒" باشد، اینباند انتخابی به ادمین تعیین‌شده اختصاص داده می‌شود.' . "\n" .  
-'اگر در حالت "🚫" باشد، ادمین شما امکان استفاده از اینباندهای انتخابی را نخواهد داشت.' . "\n" .  
-'اگر هیچ ایموجی برای اینباند وجود نداشته باشد، محدودیتی بر روی آن اعمال نشده است.' . "\n\n" .  
-'برای تغییر حالت یا حذف محدودیت، روی اینباند کلیک کنید—بصورت چرخشی تغییر خواهد کرد.',
+        'limitInbounds_info' => 'اگر در حالت "🔒" باشد، اینباند انتخابی به ادمین تعیین‌شده اختصاص داده می‌شود.' . "\n" .  
+        'اگر در حالت "🚫" باشد، ادمین شما امکان استفاده از اینباندهای انتخابی را نخواهد داشت.' . "\n" .  
+        'اگر هیچ ایموجی برای اینباند وجود نداشته باشد، محدودیتی بر روی آن اعمال نشده است.' . "\n\n" .  
+        'برای تغییر حالت یا حذف محدودیت، روی اینباند کلیک کنید—بصورت چرخشی تغییر خواهد کرد.',
         'reduceVolume_prompt' => 'لطفاً مقدار حجمی که می‌خواهید کم شود را بر حسب گیگابایت وارد نمایید:',
         'enterNewTelegramId_prompt' => '📱 لطفاً آیدی عددی تلگرام جدید را وارد کنید:',
         'setUserLimit_success' => "✅ تعداد کاربران مجاز برای ساخت به {userLimit} تنظیم شد.",
@@ -216,6 +216,12 @@ return [
         'select_event_time' => 'زمان ایونت را انتخاب کنید',
         'event_time_set' => 'تنظیم شد',
         'limits_updated' => 'محدودیت‌ها به‌روزرسانی شدند',
+        'delete_admin' => '🗑️ حذف ادمین',
+        'select_admin_to_delete' => 'لطفاً یک ادمین را برای حذف انتخاب کنید:',
+        'confirm_delete_admin' => 'آیا مطمئن هستید که می‌خواهید ادمین %s را حذف کنید؟',
+        'admin_deleted_success' => 'ادمین %s با موفقیت حذف شد.',
+        'admin_delete_failed' => 'حذف ادمین %s با شکست مواجه شد.',
+
     ],
     
     'en' => [ // english
@@ -429,7 +435,8 @@ return [
         'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.',
         'set_custom_limit' => 'Custom limit',
         'display_only_button' => 'If set to "Exclusive," the selected inbound will be assigned to the specified admin.
-If set to "Disabled," your admin will not be able to use the selected inbounds.',        'exclude_type' => 'Exclude Inbound',
+        If set to "Disabled," your admin will not be able to use the selected inbounds.',        '
+        exclude_type' => 'Exclude Inbound',
         'dedicated_type' => 'Dedicated Inbound',
         'limit_type' => 'Limit Type',
         'change_limit_type' => 'Change Type',
@@ -437,6 +444,11 @@ If set to "Disabled," your admin will not be able to use the selected inbounds.'
         'select_event_time' => 'Select event time',
         'event_time_set' => 'Set successfully',
         'limits_updated' => 'Limits updated',
+        'delete_admin' => '🗑️ Delete Admin',
+        'select_admin_to_delete' => 'Please select an admin to delete:',
+        'confirm_delete_admin' => 'Are you sure you want to delete admin %s?',
+        'admin_deleted_success' => 'Admin %s has been successfully deleted.',
+        'admin_delete_failed' => 'Failed to delete admin %s.',
         ],
             'ru' => [ // russia
         'main_menu' => '🏠 Главное меню',
@@ -648,7 +660,7 @@ If set to "Disabled," your admin will not be able to use the selected inbounds.'
         'traffic_restored_notify' => 'Traffic for panel %s (ID: %d) has been restored.',
         'set_custom_limit' => 'Custom limit',
         'display_only_button' => 'If set to "Exclusive," the selected inbound will be assigned to the specified admin.
-If set to "Disabled," your admin will not be able to use the selected inbounds.',
+        If set to "Disabled," your admin will not be able to use the selected inbounds.',
         'exclude_type' => 'Exclude Inbound',
         'dedicated_type' => 'Dedicated Inbound',
         'limit_type' => 'Limit Type',
@@ -657,5 +669,10 @@ If set to "Disabled," your admin will not be able to use the selected inbounds.'
         'select_event_time' => 'Select event time',
         'event_time_set' => 'Set successfully',
         'limits_updated' => 'Limits updated',
+        'delete_admin' => '🗑️ Удалить админа',
+        'select_admin_to_delete' => 'Пожалуйста, выберите админа для удаления:',
+        'confirm_delete_admin' => 'Вы уверены, что хотите удалить админа %s?',
+        'admin_deleted_success' => 'Админ %s успешно удален.',
+        'admin_delete_failed' => 'Не удалось удалить админа %s.',
     ]
 ];
