@@ -377,17 +377,14 @@ edit_domain_ip() {
 }
 
 configure_nginx_ssl() {
-
-        handle_apache_conflicts
+    handle_apache_conflicts
 
     # Check if SSL certificate already exists
     if [ -f "/etc/letsencrypt/live/$botDomain/fullchain.pem" ]; then
-        # If the certificate exists, ask the user whether they want to renew it
         read -p "SSL certificate for $botDomain already exists. Do you want to renew it? (y/n): " renew_choice
         if [[ "$renew_choice" =~ ^[Yy]$ ]]; then
             echo "Renewing SSL certificate for $botDomain..."
             certbot renew --cert-name "$botDomain"
-            # Check if renewal was successful
             if [ $? -ne 0 ]; then
                 echo "SSL renewal failed. Please check Certbot logs."
                 exit 1
@@ -398,10 +395,8 @@ configure_nginx_ssl() {
             echo "Skipping SSL renewal."
         fi
     else
-        # If no certificate exists, obtain a new SSL certificate
         echo "Obtaining SSL certificate for $botDomain..."
         certbot certonly --nginx --agree-tos --no-eff-email --redirect --hsts --staple-ocsp --preferred-challenges http -d "$botDomain" --http-01-port 80
-        # Check if the SSL certificate was successfully issued
         if [ ! -f "/etc/letsencrypt/live/$botDomain/fullchain.pem" ]; then
             echo "SSL certificate not issued. Check Certbot logs."
             exit 1
@@ -412,8 +407,13 @@ configure_nginx_ssl() {
     # Proceed with Nginx configuration
     echo "Configuring Nginx to run on port 88 with SSL..."
 
-    # Define PHP version (e.g., php7.4 or php8.0)
-    php_version="8.3"  # Adjust according to your system's PHP version
+    # Detect installed PHP version
+    php_version=$(php -v | grep -oP '^PHP \K[0-9]+\.[0-9]+' | head -1)
+    if [ -z "$php_version" ]; then
+        echo "Could not detect PHP version. Please ensure PHP is installed."
+        exit 1
+    fi
+    echo "Detected PHP version: $php_version"
 
     # Modify Nginx configuration to listen on port 88 with SSL enabled
     sed -i 's/listen 80 default_server;/listen 88 ssl default_server;/' /etc/nginx/sites-available/default
