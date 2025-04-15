@@ -134,42 +134,49 @@ class PanelManager {
     private $dbMarzban;
     private $dbBot;
     private $notification;
-    private $languages;
+   # private $languages;
     private $allowedUsers;
     private const INFINITY = '♾️';
 
-    public function __construct($dbMarzban, $dbBot, $notification, $languages, $allowedUsers) {
+    public function __construct($dbMarzban, $dbBot, $notification,/* $languages,*/ $allowedUsers) {
         $this->dbMarzban = $dbMarzban;
         $this->dbBot = $dbBot;
         $this->notification = $notification;
-        $this->languages = $languages;
+       # $this->languages = $languages;
         $this->allowedUsers = $allowedUsers;
     }
 
     private function getLang($userId) {
-        $langCode = 'en';
-    
-        $stmt = $this->dbBot->prepare("SELECT lang FROM user_states WHERE user_id = ?");
-        if ($stmt) {
-            $stmt->bind_param("i", $userId);
-            if ($stmt->execute()) {
-                $result = $stmt->get_result();
-                if ($result->num_rows > 0) {
-                    $row = $result->fetch_assoc();
-                    if (in_array($row['lang'], ['fa', 'en', 'ru'])) {
-                        $langCode = $row['lang'];
-                    }
+    $langCode = 'en';
+
+    $stmt = $this->dbBot->prepare("SELECT lang FROM user_states WHERE user_id = ?");
+    if ($stmt) {
+        $stmt->bind_param("i", $userId);
+        if ($stmt->execute()) {
+            $result = $stmt->get_result();
+            if ($result->num_rows > 0) {
+                $row = $result->fetch_assoc();
+                if (in_array($row['lang'], ['fa', 'en', 'ru'])) {
+                    $langCode = $row['lang'];
                 }
-            } else {
-                $this->dbBot->logError("Error executing statement: " . $stmt->error);
             }
-            $stmt->close();
         } else {
-            $this->dbBot->logError("Error preparing statement: " . $this->dbBot->error);
+            $this->dbBot->logError("Error executing statement: " . $stmt->error);
         }
-    
-        return $this->languages[$langCode] ?? $this->languages['en'];
+        $stmt->close();
+    } else {
+        $this->dbBot->logError("Error preparing statement: " . $this->dbBot->error);
     }
+
+    $languageFile = __DIR__ . "/app/language/{$langCode}.php";
+
+    if (file_exists($languageFile)) {
+        $language = include $languageFile;
+        return $language;
+    }
+
+    return include __DIR__ . "/app/language/en.php";
+}
 
     private function fetchTelegramId($adminId) {
         $stmt = $this->dbMarzban->prepare("SELECT telegram_id FROM admins WHERE id = ?");
@@ -1098,8 +1105,8 @@ class PanelManager {
 
 $dbMarzban = Database::getInstance($vpnDbHost, $vpnDbUser, $vpnDbPass, $vpnDbName)->getConnection();
 $dbBot = Database::getInstance($botDbHost, $botDbUser, $botDbPass, $botDbName)->getConnection();
-$languages = require __DIR__ . '/../languages.php';
+# $languages = require __DIR__ . '/../languages.php';
 $notification = new Notification($apiURL, $dbBot);
-$panelManager = new PanelManager($dbMarzban, $dbBot, $notification, $languages, $allowedUsers);
+$panelManager = new PanelManager($dbMarzban, $dbBot, $notification,/* $languages,*/ $allowedUsers);
 
 $panelManager->managePanels();
