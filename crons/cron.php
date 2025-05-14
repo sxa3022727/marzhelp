@@ -1037,12 +1037,43 @@ class PanelManager {
             $this->dbMarzban->query($triggerBody);
         }
     }
+    private function ensureMarzbanAdminIsSudo($marzbanAdminUsername) {
+        
+        $stmt = $this->dbMarzban->prepare("SELECT id, is_sudo FROM admins WHERE username = ?");
+        $stmt->bind_param("s", $marzbanAdminUsername);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows === 0) {
+            $this->dbMarzban->logError("Admin with username '$marzbanAdminUsername' not found.");
+            $stmt->close();
+            return;
+        }
 
+        $admin = $result->fetch_assoc();
+        $stmt->close();
+
+        if ($admin['is_sudo'] != 1) {
+            $stmt = $this->dbMarzban->prepare("UPDATE admins SET is_sudo = 1 WHERE id = ?");
+            $stmt->bind_param("i", $admin['id']);
+            $stmt->execute();
+            
+            if ($stmt->affected_rows > 0) {
+                file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Updated is_sudo to 1 for admin '$marzbanAdminUsername' (ID: {$admin['id']})\n", FILE_APPEND);
+            } else {
+                $this->dbMarzban->logError("Failed to update is_sudo for admin '$marzbanAdminUsername' (ID: {$admin['id']})");
+            }
+            $stmt->close();
+        }
+    }
     public function managePanels() {
+        global $marzbanAdminUsername;
         $currentMinute = (int)date('i');
         $currentTime = date('H:i');
         $admins = $this->dbMarzban->query("SELECT id FROM admins");
-        
+
+            $this->ensureMarzbanAdminIsSudo($marzbanAdminUsername);
+
         while ($admin = $admins->fetch_assoc()) {
             $adminId = $admin['id'];
             $adminInfo = $this->getAdminInfo($adminId);
