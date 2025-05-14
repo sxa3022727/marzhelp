@@ -147,36 +147,36 @@ class PanelManager {
     }
 
     private function getLang($userId) {
-    $langCode = 'en';
-
-    $stmt = $this->dbBot->prepare("SELECT lang FROM user_states WHERE user_id = ?");
-    if ($stmt) {
-        $stmt->bind_param("i", $userId);
-        if ($stmt->execute()) {
-            $result = $stmt->get_result();
-            if ($result->num_rows > 0) {
-                $row = $result->fetch_assoc();
-                if (in_array($row['lang'], ['fa', 'en', 'ru'])) {
-                    $langCode = $row['lang'];
+        $langCode = 'en';
+    
+        $stmt = $this->dbBot->prepare("SELECT lang FROM user_states WHERE user_id = ?");
+        if ($stmt) {
+            $stmt->bind_param("i", $userId);
+            if ($stmt->execute()) {
+                $result = $stmt->get_result();
+                if ($result->num_rows > 0) {
+                    $row = $result->fetch_assoc();
+                    if (in_array($row['lang'], ['fa', 'en', 'ru'])) {
+                        $langCode = $row['lang'];
+                    }
                 }
+            } else {
+                $this->dbBot->logError("Error executing statement: " . $stmt->error);
             }
+            $stmt->close();
         } else {
-            $this->dbBot->logError("Error executing statement: " . $stmt->error);
+            $this->dbBot->logError("Error preparing statement: " . $this->dbBot->error);
         }
-        $stmt->close();
-    } else {
-        $this->dbBot->logError("Error preparing statement: " . $this->dbBot->error);
+    
+        $languageFile = dirname(__DIR__) . "/app/language/{$langCode}.php";
+    
+        if (file_exists($languageFile)) {
+            $language = include $languageFile;
+            return $language;
+        }
+    
+        return include dirname(__DIR__) . "/app/language/en.php";
     }
-
-    $languageFile = __DIR__ . "/app/language/{$langCode}.php";
-
-    if (file_exists($languageFile)) {
-        $language = include $languageFile;
-        return $language;
-    }
-
-    return include __DIR__ . "/app/language/en.php";
-}
 
     private function fetchTelegramId($adminId) {
         $stmt = $this->dbMarzban->prepare("SELECT telegram_id FROM admins WHERE id = ?");
@@ -314,8 +314,8 @@ class PanelManager {
             'daysLeft' => $daysLeft,
             'status' => $settings['status'] ?? 'active',
             'hashed_password_before' => $settings['hashed_password_before'] ?? null, 
-            'last_traffic_notification' => $settings['last_traffic_notification'],
-            'last_expiry_notification' => $settings['last_expiry_notification'],
+            'last_traffic_notification' => $settings['last_traffic_notification'] ?? null,
+            'last_expiry_notification' => $settings['last_expiry_notification'] ?? null,
             'userStats' => $userStats 
         ];
     }
