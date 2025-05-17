@@ -703,6 +703,76 @@ function autoCreateAdmin($chatId) {
     $stmt->close();
 }
 
+function generateStatusMessage($marzbanapi, $chatId, $lang, $sendMessage = true, $messageId = null) {
+    try {
+       
+        $stats = $marzbanapi->getSystemStats();
+        
+       
+        $mem_total = round($stats['mem_total'] / 1073741824, 2); 
+        $mem_used = round($stats['mem_used'] / 1073741824, 2);
+        $mem_free = round($mem_total - $mem_used, 2);
+        
+        $download_usage = round($stats['incoming_bandwidth'] / 1099511627776, 2); 
+        $upload_usage = round($stats['outgoing_bandwidth'] / 1099511627776, 2);
+        $total_usage = round($download_usage + $upload_usage, 2);
+        
+        $download_speed = round($stats['incoming_bandwidth_speed'] / 1048576, 2); 
+        $upload_speed = round($stats['outgoing_bandwidth_speed'] / 1048576, 2);
+        
+        $statusText = "🎛 **CPU Cores:** `{$stats['cpu_cores']}`\n";
+        $statusText .= "🖥 **CPU Usage:** `{$stats['cpu_usage']}%`\n";
+        $statusText .= "➖➖➖➖➖➖➖\n";
+        $statusText .= "📊 **Total Memory:** `{$mem_total} GB`\n";
+        $statusText .= "📈 **Used Memory:** `{$mem_used} GB`\n";
+        $statusText .= "📉 **Free Memory:** `{$mem_free} GB`\n";
+        $statusText .= "➖➖➖➖➖➖➖\n";
+        $statusText .= "⬇️ **Download Usage:** `{$download_usage} TB`\n";
+        $statusText .= "⬆️ **Upload Usage:** `{$upload_usage} TB`\n";
+        $statusText .= "↕️ **Total Usage:** `{$total_usage} TB`\n";
+        $statusText .= "➖➖➖➖➖➖➖\n";
+        $statusText .= "👥 **Total Users:** `{$stats['total_user']}`\n";
+        $statusText .= "🟢 **Active Users:** `{$stats['users_active']}`\n";
+        $statusText .= "🟣 **On-Hold Users:** `{$stats['users_on_hold']}`\n";
+        $statusText .= "🔴 **Deactivated Users:** `{$stats['users_disabled']}`\n";
+        $statusText .= "➖➖➖➖➖➖➖\n";
+        $statusText .= "⏫ **Upload Speed:** `{$upload_speed} MB/s`\n";
+        $statusText .= "⏬ **Download Speed:** `{$download_speed} MB/s`";
+
+        $keyboard = getstatuskeyboard($lang);
+
+        if ($sendMessage) {
+            $params = [
+                'chat_id' => $chatId,
+                'text' => $statusText,
+                'parse_mode' => 'Markdown',
+                'reply_markup' => json_encode($keyboard)
+            ];
+            if ($messageId) {
+                $params['message_id'] = $messageId;
+                sendRequest('editMessageText', $params);
+            } else {
+                sendRequest('sendMessage', $params);
+            }
+        }
+
+        return [
+            'text' => $statusText,
+            'keyboard' => $keyboard
+        ];
+    } catch (Exception $e) {
+        $errorText = "Error fetching stats: {$e->getMessage()}";
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $errorText,
+            'parse_mode' => 'Markdown',
+            'reply_markup' => json_encode(getMainMenuKeyboard($userId, $lang))
+        ]);
+        return false;
+    }
+}
+
 function handleCallbackQuery($callback_query) {
     global $botConn, $marzbanConn, $allowedUsers, $botDbPass, $vpnDbPass, $apiURL, $latestVersion, $marzbanapi;
 
@@ -1110,7 +1180,8 @@ function handleCallbackQuery($callback_query) {
             )
         ]);
     }
-    if ($data === 'manage_admins') {
+        if ($data === 'manage_admins') {
+        global $marzbanAdminUsername; 
         if (in_array($userId, $allowedUsers)) {
             $adminsResult = $marzbanConn->query("SELECT id, username FROM admins");
         } else {
@@ -1119,18 +1190,30 @@ function handleCallbackQuery($callback_query) {
             $stmt->execute();
             $adminsResult = $stmt->get_result();
         }
-    
+
         $admins = [];
         while ($row = $adminsResult->fetch_assoc()) {
-            $admins[] = ['text' => $row['username'], 'callback_data' => 'select_admin:' . $row['id']];
+            if ($row['username'] === $marzbanAdminUsername) {
+                continue;
+            }
+            $adminInfo = getAdminInfo($row['id']);
+            if ($adminInfo) {
+                $remainingTraffic = $adminInfo['remainingTraffic'] === '♾️' ? 'نامحدود' : number_format($adminInfo['remainingTraffic'], 2) . ' گیگ';
+                $daysLeft = $adminInfo['daysLeft'] === '♾️' ? 'نامحدود' : $adminInfo['daysLeft'] . ' روز';
+                $admins[] = [
+                    ['text' => $daysLeft, 'callback_data' => 'select_admin:' . $row['id']],
+                    ['text' => $remainingTraffic, 'callback_data' => 'select_admin:' . $row['id']],
+                    ['text' => $row['username'], 'callback_data' => 'select_admin:' . $row['id']]
+                ];
+            }
         }
-    
+
         if (empty($admins)) {
             $stmt = $botConn->prepare("UPDATE user_states SET state = NULL WHERE user_id = ?");
             $stmt->bind_param("i", $chatId);
             $stmt->execute();
             $stmt->close();
-    
+
             $keyboard = [
                 'inline_keyboard' => [
                     [
@@ -1138,7 +1221,7 @@ function handleCallbackQuery($callback_query) {
                     ]
                 ]
             ];
-    
+
             sendRequest('editMessageText', [
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
@@ -1147,34 +1230,40 @@ function handleCallbackQuery($callback_query) {
             ]);
             return;
         }
-    
-        $keyboard = ['inline_keyboard' => array_chunk($admins, 2)];
-    
+
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => 'زمان باقی‌مانده', 'callback_data' => 'noop'],
+                    ['text' => 'حجم باقی‌مانده', 'callback_data' => 'noop'],
+                    ['text' => 'یوزرنیم', 'callback_data' => 'noop']
+                ]
+            ]
+        ];
+
+        $keyboard['inline_keyboard'] = array_merge($keyboard['inline_keyboard'], $admins);
+
         if (in_array($userId, $allowedUsers)) {
             $keyboard['inline_keyboard'][] = [
                 ['text' => $lang['add_admin'], 'callback_data' => 'add_admin'],
                 ['text' => $lang['delete_admin'], 'callback_data' => 'delete_admin']
             ];
-            $keyboard['inline_keyboard'][] = [
-                ['text' => $lang['back'], 'callback_data' => 'back_to_main']
-            ];
-        } else {
-            $keyboard['inline_keyboard'][] = [
-                ['text' => $lang['back'], 'callback_data' => 'back_to_main']
-            ];
         }
-    
+        $keyboard['inline_keyboard'][] = [
+            ['text' => $lang['back'], 'callback_data' => 'back_to_main']
+        ];
+
         handleUserState('clear', $chatId);
-    
+
         sendRequest('editMessageText', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
             'text' => $lang['select_admin_prompt'],
-            'reply_markup' => $keyboard
+            'parse_mode' => 'Markdown',
+            'reply_markup' => json_encode($keyboard)
         ]);
         return;
-    }
-        
+    }        
     if ($data === 'delete_admin') {
         $adminsResult = $marzbanConn->query("SELECT id, username FROM admins");
         $admins = [];
@@ -2085,16 +2174,101 @@ function handleCallbackQuery($callback_query) {
     
     if (strpos($data, 'set_expiry:') === 0) {
         $adminId = intval(substr($data, strlen('set_expiry:')));
-        
-        $response = sendRequest('editMessageText', [
+
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['select_expiry_action'],
+            'reply_markup' => json_encode([
+                'inline_keyboard' => [
+                    [
+                        ['text' => $lang['unlimited_expiry'], 'callback_data' => "set_expiry_unlimited:$adminId"],
+                        ['text' => $lang['custom_expiry'], 'callback_data' => "custom_expiry:$adminId"]
+                    ],
+                    [
+                        ['text' => '30 ' . $lang['days'], 'callback_data' => "set_expiry_days:$adminId:30"],
+                        ['text' => '60 ' . $lang['days'], 'callback_data' => "set_expiry_days:$adminId:60"]
+                    ],
+                    [
+                        ['text' => '90 ' . $lang['days'], 'callback_data' => "set_expiry_days:$adminId:90"],
+                        ['text' => '180 ' . $lang['days'], 'callback_data' => "set_expiry_days:$adminId:180"]
+                    ],
+                    [
+                        ['text' => $lang['back'], 'callback_data' => 'select_admin:' . $adminId]
+                    ]
+                ]
+            ])
+        ]);
+        return;
+    }
+    if (strpos($data, 'set_expiry_unlimited:') === 0) {
+        $adminId = intval(substr($data, strlen('set_expiry_unlimited:')));
+
+        $stmt = $botConn->prepare("INSERT INTO admin_settings (admin_id, expiry_date) VALUES (?, NULL) ON DUPLICATE KEY UPDATE expiry_date = NULL");
+        $stmt->bind_param("i", $adminId);
+        $stmt->execute();
+        $stmt->close();
+
+        $adminInfo = getAdminInfo($adminId, $userId);
+        $adminInfo['adminId'] = $adminId;
+        $infoText = getAdminInfoText($adminInfo, $userId);
+
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['setNewExpiry_success'],
+            'parse_mode' => 'Markdown'
+        ]);
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $infoText,
+            'parse_mode' => 'Markdown',
+            'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status'])
+        ]);
+        return;
+    }
+    if (strpos($data, 'set_expiry_days:') === 0) {
+        list(, $adminId, $days) = explode(':', $data);
+        $adminId = intval($adminId);
+        $days = intval($days);
+
+        $expiryDate = date('Y-m-d', strtotime("+$days days"));
+
+        $stmt = $botConn->prepare("INSERT INTO admin_settings (admin_id, expiry_date) VALUES (?, ?) ON DUPLICATE KEY UPDATE expiry_date = ?");
+        $stmt->bind_param("iss", $adminId, $expiryDate, $expiryDate);
+        $stmt->execute();
+        $stmt->close();
+
+        $adminInfo = getAdminInfo($adminId, $userId);
+        $adminInfo['adminId'] = $adminId;
+        $infoText = getAdminInfoText($adminInfo, $userId);
+
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $lang['setNewExpiry_success'],
+            'parse_mode' => 'Markdown'
+        ]);
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $infoText,
+            'parse_mode' => 'Markdown',
+            'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status'])
+        ]);
+        return;
+    }
+    if (strpos($data, 'custom_expiry:') === 0) {
+        $adminId = intval(substr($data, strlen('custom_expiry:')));
+
+        handleUserState('set', $userId, 'set_expiry', $adminId);
+
+        sendRequest('editMessageText', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
             'text' => $lang['setExpiryDays_prompt'],
+            'parse_mode' => 'Markdown',
             'reply_markup' => getBackToAdminManagementKeyboard($adminId, $userId)
         ]);
-    
-    handleUserState('set', $userId, 'set_expiry', $adminId);
-
         return;
     }
     if (strpos($data, 'disable_users:') === 0) {
@@ -2227,7 +2401,7 @@ function handleCallbackQuery($callback_query) {
         logDebug("Starting limit_inbounds with data: $data");
         $adminId = intval(substr($data, strlen('limit_inbounds:')));
         $adminInfo = getAdminInfo($adminId, $userId);
-    
+
         if (!$adminInfo || !isset($adminInfo['username'])) {
             logDebug("Invalid admin info for adminId: $adminId");
             sendRequest('answerCallbackQuery', [
@@ -2237,17 +2411,17 @@ function handleCallbackQuery($callback_query) {
             ]);
             return;
         }
-    
+
         sendRequest('deleteMessage', [
             'chat_id' => $chatId,
             'message_id' => $messageId
         ]);
-    
+
         $cacheFile = 'ad_cache.txt';
         $cacheTimeFile = 'ad_cache_time.txt';
-        $cacheLifetime = 24 * 60 * 60; 
+        $cacheLifetime = 24 * 60 * 60;
         $adText = null;
-    
+
         if (file_exists($cacheFile) && file_exists($cacheTimeFile)) {
             $cacheTime = (int) file_get_contents($cacheTimeFile);
             if (time() - $cacheTime < $cacheLifetime) {
@@ -2255,9 +2429,9 @@ function handleCallbackQuery($callback_query) {
                 logDebug("Ad text loaded from cache: " . $adText);
             }
         }
-    
+
         if ($adText === null) {
-            $rawUrl = "https://raw.githubusercontent.com/ppouria/marzhelp/dev/ad_text.txt"; 
+            $rawUrl = "https://raw.githubusercontent.com/ppouria/marzhelp/dev/ad_text.txt";
             $response = @file_get_contents($rawUrl);
             if ($response !== false) {
                 $adText = $response;
@@ -2266,7 +2440,7 @@ function handleCallbackQuery($callback_query) {
                 logDebug("Ad text fetched from GitHub and cached: " . $adText);
             }
         }
-    
+
         if ($adText !== null) {
             $adResult = sendRequest('sendMessage', [
                 'chat_id' => $chatId,
@@ -2280,18 +2454,29 @@ function handleCallbackQuery($callback_query) {
         } else {
             logDebug("Failed to fetch ad text from GitHub, skipping sponsor message");
         }
-    
-        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
-        if (!$inboundsResult) {
-            logDebug("Error in query SELECT tag FROM inbounds: " . $marzbanConn->error);
+
+        try {
+            $inboundsData = $marzbanapi->getInbounds();
+            $inbounds = [];
+            foreach ($inboundsData as $protocol => $inboundList) {
+                foreach ($inboundList as $inbound) {
+                    if (isset($inbound['tag'])) {
+                        $inbounds[] = $inbound['tag'];
+                    }
+                }
+            }
+            logDebug("Fetched inbounds from API: " . json_encode($inbounds));
+        } catch (Exception $e) {
+            logDebug("Error fetching inbounds from API: " . $e->getMessage());
+            sendRequest('sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $lang['error_fetching_inbounds'],
+                'parse_mode' => 'Markdown',
+                'reply_markup' => json_encode(getMainMenuKeyboard($userId, $lang))
+            ]);
             return;
         }
-        $inbounds = [];
-        while ($row = $inboundsResult->fetch_assoc()) {
-            $inbounds[] = $row['tag'];
-        }
-        logDebug("Fetched inbounds: " . json_encode($inbounds));
-    
+
         $limitsResult = $marzbanConn->query("SELECT type, inbound_tag FROM marzhelp_limits WHERE admin_id = $adminId");
         if (!$limitsResult) {
             logDebug("Error in query SELECT from marzhelp_limits: " . $marzbanConn->error);
@@ -2302,7 +2487,7 @@ function handleCallbackQuery($callback_query) {
             $limits[$row['inbound_tag']] = $row['type'];
         }
         logDebug("Fetched limits: " . json_encode($limits));
-    
+
         $inboundButtons = [];
         foreach ($inbounds as $inbound) {
             $type = isset($limits[$inbound]) ? $limits[$inbound] : null;
@@ -2313,7 +2498,7 @@ function handleCallbackQuery($callback_query) {
             ];
         }
         $inboundRows = array_chunk($inboundButtons, 2);
-    
+
         $keyboard = array_merge(
             $inboundRows,
             [
@@ -2326,23 +2511,22 @@ function handleCallbackQuery($callback_query) {
                 ]
             ]
         );
-    
+
         logDebug("Generated keyboard: " . json_encode($keyboard));
 
         $result = sendRequest('sendMessage', [
             'chat_id' => $chatId,
-            #'message_id' => $adMessageId,
             'text' => $lang['limitInbounds_info'],
             'reply_markup' => ['inline_keyboard' => $keyboard]
         ]);
         logDebug("sendRequest result for limit_inbounds: " . json_encode($result));
         return;
     }
-    
+
     if (strpos($data, 'set_event_time:') === 0) {
         logDebug("Setting event time with data: $data");
         $adminId = intval(substr($data, strlen('set_event_time:')));
-    
+
         $eventName = 'manage_inbound_limits';
         $eventResult = $marzbanConn->query("SHOW CREATE EVENT `$eventName`");
         $currentInterval = 1;
@@ -2354,7 +2538,7 @@ function handleCallbackQuery($callback_query) {
                 $currentInterval = intval($matches[1]);
             }
         }
-    
+
         $intervals = [1, 3, 5, 10, 30, 60];
         $intervalButtons = [];
         foreach ($intervals as $interval) {
@@ -2365,7 +2549,7 @@ function handleCallbackQuery($callback_query) {
             ];
         }
         $intervalRows = array_chunk($intervalButtons, 2);
-    
+
         $keyboard = array_merge(
             $intervalRows,
             [
@@ -2374,7 +2558,7 @@ function handleCallbackQuery($callback_query) {
                 ]
             ]
         );
-    
+
         $result = sendRequest('editMessageText', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
@@ -2384,26 +2568,47 @@ function handleCallbackQuery($callback_query) {
         logDebug("sendRequest result for set_event_time: " . json_encode($result));
         return;
     }
-    
+
     if (strpos($data, 'set_interval:') === 0) {
         logDebug("Setting interval with data: $data");
         list(, $adminId, $interval) = explode(':', $data);
         $interval = intval($interval);
-    
+
         manageEventBasedOnLimits($interval);
-    
-        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
-        $inbounds = [];
-        while ($row = $inboundsResult->fetch_assoc()) {
-            $inbounds[] = $row['tag'];
+
+        try {
+            $inboundsData = $marzbanapi->getInbounds();
+            $inbounds = [];
+            foreach ($inboundsData as $protocol => $inboundList) {
+                foreach ($inboundList as $inbound) {
+                    if (isset($inbound['tag'])) {
+                        $inbounds[] = $inbound['tag'];
+                    }
+                }
+            }
+            logDebug("Fetched inbounds from API: " . json_encode($inbounds));
+        } catch (Exception $e) {
+            logDebug("Error fetching inbounds from API: " . $e->getMessage());
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => $lang['error_fetching_inbounds'],
+                'parse_mode' => 'Markdown',
+                'reply_markup' => json_encode(getMainMenuKeyboard($userId, $lang))
+            ]);
+            return;
         }
-    
+
         $limitsResult = $marzbanConn->query("SELECT type, inbound_tag FROM marzhelp_limits WHERE admin_id = $adminId");
+        if (!$limitsResult) {
+            logDebug("Error in query SELECT from marzhelp_limits: " . $marzbanConn->error);
+            return;
+        }
         $limits = [];
         while ($row = $limitsResult->fetch_assoc()) {
             $limits[$row['inbound_tag']] = $row['type'];
         }
-    
+
         $inboundButtons = [];
         foreach ($inbounds as $inbound) {
             $type = isset($limits[$inbound]) ? $limits[$inbound] : null;
@@ -2414,7 +2619,7 @@ function handleCallbackQuery($callback_query) {
             ];
         }
         $inboundRows = array_chunk($inboundButtons, 2);
-    
+
         $keyboard = array_merge(
             $inboundRows,
             [
@@ -2427,14 +2632,14 @@ function handleCallbackQuery($callback_query) {
                 ]
             ]
         );
-    
+
         $result = sendRequest('editMessageText', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
             'text' => $lang['limitInbounds_info'],
             'reply_markup' => ['inline_keyboard' => $keyboard]
         ]);
-    
+
         sendRequest('answerCallbackQuery', [
             'callback_query_id' => $callbackId,
             'text' => $lang['event_time_set'],
@@ -2442,11 +2647,11 @@ function handleCallbackQuery($callback_query) {
         ]);
         return;
     }
-    
+
     if (strpos($data, 'toggle_inbound:') === 0) {
         logDebug("Toggling inbound with data: $data");
         list(, $adminId, $inboundTag) = explode(':', $data);
-    
+
         $adminInfo = getAdminInfo($adminId, $userId);
         if (!$adminInfo || !isset($adminInfo['username'])) {
             logDebug("Invalid admin info for toggle_inbound");
@@ -2457,15 +2662,15 @@ function handleCallbackQuery($callback_query) {
             ]);
             return;
         }
-    
+
         $inboundTag = $marzbanConn->real_escape_string($inboundTag);
-    
+
         $limitResult = $marzbanConn->query("SELECT type FROM marzhelp_limits WHERE admin_id = $adminId AND inbound_tag = '$inboundTag'");
         if (!$limitResult) {
             logDebug("Error in query SELECT from marzhelp_limits: " . $marzbanConn->error);
             return;
         }
-    
+
         if ($limitResult->num_rows > 0) {
             $currentType = $limitResult->fetch_assoc()['type'];
             if ($currentType == 'exclude') {
@@ -2476,21 +2681,42 @@ function handleCallbackQuery($callback_query) {
         } else {
             $marzbanConn->query("INSERT INTO marzhelp_limits (type, admin_id, inbound_tag) VALUES ('exclude', $adminId, '$inboundTag')");
         }
-    
+
         manageEventBasedOnLimits();
-    
-        $inboundsResult = $marzbanConn->query("SELECT tag FROM inbounds");
-        $inbounds = [];
-        while ($row = $inboundsResult->fetch_assoc()) {
-            $inbounds[] = $row['tag'];
+
+        try {
+            $inboundsData = $marzbanapi->getInbounds();
+            $inbounds = [];
+            foreach ($inboundsData as $protocol => $inboundList) {
+                foreach ($inboundList as $inbound) {
+                    if (isset($inbound['tag'])) {
+                        $inbounds[] = $inbound['tag'];
+                    }
+                }
+            }
+            logDebug("Fetched inbounds from API: " . json_encode($inbounds));
+        } catch (Exception $e) {
+            logDebug("Error fetching inbounds from API: " . $e->getMessage());
+            sendRequest('editMessageText', [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => $lang['error_fetching_inbounds'],
+                'parse_mode' => 'Markdown',
+                'reply_markup' => json_encode(getMainMenuKeyboard($userId, $lang))
+            ]);
+            return;
         }
-    
+
         $limitsResult = $marzbanConn->query("SELECT type, inbound_tag FROM marzhelp_limits WHERE admin_id = $adminId");
+        if (!$limitsResult) {
+            logDebug("Error in query SELECT from marzhelp_limits: " . $marzbanConn->error);
+            return;
+        }
         $limits = [];
         while ($row = $limitsResult->fetch_assoc()) {
             $limits[$row['inbound_tag']] = $row['type'];
         }
-    
+
         $inboundButtons = [];
         foreach ($inbounds as $inbound) {
             $type = isset($limits[$inbound]) ? $limits[$inbound] : null;
@@ -2501,7 +2727,7 @@ function handleCallbackQuery($callback_query) {
             ];
         }
         $inboundRows = array_chunk($inboundButtons, 2);
-    
+
         $keyboard = array_merge(
             $inboundRows,
             [
@@ -2514,7 +2740,7 @@ function handleCallbackQuery($callback_query) {
                 ]
             ]
         );
-    
+
         $result = sendRequest('editMessageReplyMarkup', [
             'chat_id' => $chatId,
             'message_id' => $messageId,
@@ -2523,13 +2749,13 @@ function handleCallbackQuery($callback_query) {
         logDebug("sendRequest result for toggle_inbound: " . json_encode($result));
         return;
     }
-    
+
     if (strpos($data, 'confirm_inbounds_limit:') === 0) {
         logDebug("Confirming inbounds with data: $data");
-        $adminId = intval(substr($data, strlen('confirm_inbounds:')));
-    
+        $adminId = intval(substr($data, strlen('confirm_inbounds_limit:')));
+
         manageEventBasedOnLimits();
-    
+
         sendRequest('answerCallbackQuery', [
             'callback_query_id' => $callbackId,
             'text' => $lang['limits_updated'],
@@ -3633,6 +3859,102 @@ if (strpos($data, 'set_calculate_volume:') === 0) {
         'reply_markup' => json_encode($keyboard)
     ]);
     }
+if ($data === 'show_status') {
+    generateStatusMessage($marzbanapi, $chatId, $lang, true, $messageId);
+    return;
+}
+
+if ($data === 'restart_xray') {
+    try {
+        $marzbanapi->restartCore();
+
+        sendRequest('deleteMessage', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId
+        ]);
+
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $lang['xray_restart_success'],
+            'parse_mode' => 'Markdown'
+        ]);
+        generateStatusMessage($marzbanapi, $chatId, $lang, true);
+    } catch (Exception $e) {
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => "Error restarting Xray: {$e->getMessage()}",
+            'parse_mode' => 'Markdown',
+            'reply_markup' => json_encode(getMainMenuKeyboard($userId, $lang))
+        ]);
+    }
+    return;
+}
+
+if ($data === 'marzban_restart') {
+    try {
+        $command = 'sudo marzban restart > /dev/null 2>&1 &';
+        exec($command, $output, $return_var);
+        $outputText = implode("\n", $output);
+        file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Marzban restart output:\n" . $outputText . "\n", FILE_APPEND);
+
+        sendRequest('deleteMessage', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId
+        ]);
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $lang['marzban_restart_success'],
+            'parse_mode' => 'Markdown'
+        ]);
+
+        sleep(30);
+
+        generateStatusMessage($marzbanapi, $chatId, $lang, true);
+    } catch (Exception $e) {
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => "Error restarting Marzban: {$e->getMessage()}",
+            'parse_mode' => 'Markdown',
+            'reply_markup' => json_encode(getMainMenuKeyboard($userId, $lang))
+        ]);
+    }
+    return;
+}
+
+if ($data === 'marzban_update') {
+    try {
+        $command = 'sudo /usr/local/bin/marzban update 2>&1';
+        $output = shell_exec($command);
+        $outputText = $output ?: "No output from command";
+        file_put_contents('logs.txt', date('Y-m-d H:i:s') . " - Marzban update output:\n" . $outputText . "\n", FILE_APPEND);
+
+        sendRequest('deleteMessage', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId
+        ]);
+
+        sendRequest('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $lang['marzban_update_success'],
+            'parse_mode' => 'Markdown'
+        ]);
+
+        sleep(30);
+
+        generateStatusMessage($marzbanapi, $chatId, $lang, true);
+    } catch (Exception $e) {
+        sendRequest('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => "Error updating Marzban: {$e->getMessage()}",
+            'parse_mode' => 'Markdown',
+            'reply_markup' => json_encode(getMainMenuKeyboard($userId, $lang))
+        ]);
+    }
+    return;
+}
 }
 
     function handleMessage($message) {
@@ -3955,45 +4277,45 @@ if (strpos($data, 'set_calculate_volume:') === 0) {
                 if ($days > 0) {
                     $adminId = $userState['admin_id'];
                     $expiryDate = date('Y-m-d', strtotime("+$days days"));
-                    $promptMessageId = $userState['message_id']; 
+                    $promptMessageId = $userState['message_id'];
 
-    
                     $stmt = $botConn->prepare("INSERT INTO admin_settings (admin_id, expiry_date) VALUES (?, ?) ON DUPLICATE KEY UPDATE expiry_date = ?");
                     $stmt->bind_param("iss", $adminId, $expiryDate, $expiryDate);
                     $stmt->execute();
                     $stmt->close();
+
                     sendRequest('deleteMessage', [
                         'chat_id' => $chatId,
                         'message_id' => $promptMessageId
                     ]);
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
-                        'text' => $lang['setNewExpiry_success']
+                        'text' => $lang['setNewExpiry_success'],
+                        'parse_mode' => 'Markdown'
                     ]);
-    
+
                     $adminInfo = getAdminInfo($adminId, $userId);
                     $adminInfo['adminId'] = $adminId;
                     $infoText = getAdminInfoText($adminInfo, $userId);
-    
+
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
                         'text' => $infoText,
                         'parse_mode' => 'Markdown',
                         'reply_markup' => getAdminKeyboard($chatId, $adminId, $adminInfo['status'])
                     ]);
-    
-                    handleUserState('clear', $userId);
 
+                    handleUserState('clear', $userId);
                     return;
                 } else {
                     sendRequest('sendMessage', [
                         'chat_id' => $chatId,
-                        'text' => $lang['invalid_input']
+                        'text' => $lang['invalid_input'],
+                        'parse_mode' => 'Markdown'
                     ]);
                     return;
                 }
             }
-        }
         if ($userState['state'] === 'set_new_password') {
             $hashedPassword = password_hash($text, PASSWORD_BCRYPT);
             $adminId = $userState['admin_id'];

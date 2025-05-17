@@ -14,7 +14,8 @@ function getMainMenuKeyboard($userId) {
                     ['text' => $lang['account_info'], 'callback_data' => 'account_info']
                 ],
                 [
-                    ['text' => $lang['settings'], 'callback_data' => 'settings']
+                    ['text' => $lang['settings'], 'callback_data' => 'settings'],
+                    ['text' => $lang['status'], 'callback_data' => 'show_status']
                 ]
             ]
         ];
@@ -378,3 +379,22 @@ function getCalculateVolumeKeyboard($adminId, $userId) {
                 ]
             ];
         }
+function getstatuskeyboard($lang) {
+
+    return [
+        'inline_keyboard' => [
+                [
+                    ['text' => $lang['refresh'], 'callback_data' => 'show_status']
+                ],
+                [
+                    ['text' => $lang['restart_xray'], 'callback_data' => 'restart_xray'],
+                    ['text' => $lang['restart_marzban'], 'callback_data' => 'marzban_restart'],
+                    ['text' => $lang['update_marzban'], 'callback_data' => 'marzban_update']
+                ],
+                [
+                    ['text' => $lang['back'], 'callback_data' => 'back_to_main']
+                ]
+            ]
+        ];
+    
+}

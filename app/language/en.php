@@ -224,4 +224,11 @@ return [
     'confirm_delete_admin' => 'Are you sure you want to delete admin %s?',
     'admin_deleted_success' => 'Admin %s has been successfully deleted.',
     'admin_delete_failed' => 'Failed to delete admin %s.',
+    'xray_restart_success' => '✅ Xray Core restarted successfully.',
+    'restart_xray' => '🔄 Restart Xray Core',
+    'error_fetching_inbounds' => 'Error fetching inbounds from API.',
+    'select_expiry_action' => 'Select an option to set expiry date:',
+    'unlimited_expiry' => 'Unlimited',
+    'custom_expiry' => 'Custom Amount',
+
 ];
