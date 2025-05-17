@@ -16,7 +16,7 @@ require_once 'app/classes/marzban.php';
 require_once 'app/functions/keyboards.php';
 require 'config.php';
 
-$latestVersion = 'v0.2.7';
+$latestVersion = 'v0.2.8';
 
 $marzbanapi = new MarzbanAPI($marzbanUrl, $marzbanAdminUsername, $marzbanAdminPassword);
 

@@ -384,7 +384,7 @@ function getstatuskeyboard($lang) {
     return [
         'inline_keyboard' => [
                 [
-                    ['text' => $lang['refresh'], 'callback_data' => 'show_status']
+                    ['text' => $lang['refresh_button'], 'callback_data' => 'show_status']
                 ],
                 [
                     ['text' => $lang['restart_xray'], 'callback_data' => 'restart_xray'],
